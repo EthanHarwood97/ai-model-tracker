@@ -111,7 +111,7 @@ def scrape_models(html):
     seen = {}
     for m in re.finditer(r'"name":"((?:[^"\\]|\\.)*)"', text):
         name = _json_str(m.group(1))
-        window = text[m.end(): m.end() + 1400]
+        window = text[m.end(): m.end() + 2600]
         slug = _grab_str(window, "slug")
         iq = _grab_num(window, "intelligenceIndex")
         if slug is None or iq is None:
@@ -129,9 +129,13 @@ def scrape_models(html):
                 "intelligence_estimated": _grab_bool(window, "intelligenceIndexIsEstimated"),
                 "coding_index": round(_grab_num(window, "codingIndex"), 4) if _grab_num(window, "codingIndex") is not None else None,
                 "price_1m_blended": round(_grab_num(window, "price1mBlended0To3To1"), 4) if _grab_num(window, "price1mBlended0To3To1") is not None else None,
+                "price_1m_input": round(_grab_num(window, "price1mInputTokens"), 4) if _grab_num(window, "price1mInputTokens") is not None else None,
+                "price_1m_output": round(_grab_num(window, "price1mOutputTokens"), 4) if _grab_num(window, "price1mOutputTokens") is not None else None,
                 "release_date": _grab_str(window, "releaseDate"),
                 "is_reasoning": _grab_bool(window, "isReasoning"),
                 "deprecated": _grab_bool(window, "deprecated"),
+                "context_window": _grab_num(window, "contextWindowTokens"),
+                "output_speed": round(_grab_num(window, "medianOutputTokensPerSecond"), 1) if _grab_num(window, "medianOutputTokensPerSecond") is not None else None,
             },
         })
     return rows

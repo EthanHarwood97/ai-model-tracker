@@ -197,5 +197,7 @@ def attach_model_to_coding(pairs):
             "intelligence_estimated": m["extra"].get("intelligence_estimated", False),
             "price_mtok": m["extra"].get("price_1m_blended"),
             "release_date": m["extra"].get("release_date"),
+            "context_window": m["extra"].get("context_window"),
+            "output_speed": m["extra"].get("output_speed"),
         }
     return out
