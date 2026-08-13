@@ -45,22 +45,17 @@ function band(model) {
   return [Math.max(0, quality(model) - width), Math.min(100, quality(model) + width)];
 }
 
-function costOf(model) {
-  return model.cost_task !== null && model.cost_task !== undefined ? model.cost_task : model.price_mtok;
-}
-
-function unitOf(model) {
-  return model.cost_task !== null && model.cost_task !== undefined ? "task" : "price";
+function sliderCost(model) {
+  return model.price_mtok !== null && model.price_mtok !== undefined ? model.price_mtok : model.cost_task;
 }
 
 function costNorm(model) {
-  const unit = unitOf(model);
-  const costs = allModels().filter((other) => unitOf(other) === unit).map(costOf).filter((value) => value !== null && value !== undefined);
+  const costs = allModels().map(sliderCost).filter((value) => value !== null && value !== undefined);
   if (costs.length < 2) return 0;
   const min = Math.min(...costs);
   const max = Math.max(...costs);
-  const cost = costOf(model);
-  if (cost === null || cost === undefined) return 0;
+  const cost = sliderCost(model);
+  if (cost === null || cost === undefined) return 0.5;
   return max === min ? 0 : (cost - min) / (max - min);
 }
 
@@ -91,13 +86,13 @@ function rowHtml(model, rank) {
   const modelName = parts.length > 1 ? parts.slice(1).join(" - ") : String(model.name || "");
   const harnessLabel = harness ? `<span class="harness">${esc(harness)}</span>` : "";
   const scoreNote = estimated ? `<small>predicted &plusmn;${num((model.detail?.band ?? 0.06) * 100, 0)}</small>` : `<small>coding score</small>`;
-  const costNote = estimated ? `<small>per 1M tokens</small>` : `<small>per task</small>`;
   return `<article class="row ${estimated ? "est-row" : ""}">
     <span class="rank">${rank}</span>
     <div class="model"><strong>${esc(modelName)}</strong>${harnessLabel}${badges(model)}</div>
     <div class="cell score-cell"><b>${num(quality(model))}</b>${scoreNote}</div>
-    <div class="cell"><b>${money(costOf(model))}</b>${costNote}</div>
-    <div class="cell"><b>${minutes(model.wall_time_s)}</b><small>task time</small></div>
+    <div class="cell cell-task"><b>${money(model.cost_task)}</b><small>per task</small></div>
+    <div class="cell cell-price"><b>${money(model.price_mtok)}</b><small>per 1M tokens</small></div>
+    <div class="cell cell-time"><b>${minutes(model.wall_time_s)}</b><small>task time</small></div>
   </article>`;
 }
 
@@ -116,7 +111,7 @@ function renderLeaderboard() {
       <h1>The best coding agents</h1>
       <p>Ranked by coding score out of 100. ${state.coding.length} measured on the benchmark, ${state.est.length} predicted before testing.</p>
     </div>
-    <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost</span><span class="cell">Time / task</span></div>
+    <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
     <div class="list">${rows.map((model, index) => rowHtml(model, index + 1)).join("")}</div>
   </section>`;
 }
@@ -127,14 +122,14 @@ function renderValue() {
   return `<section class="page">
     <div class="page-head">
       <h1>Cost vs quality</h1>
-      <p>Move the slider to lean toward cheaper models or stronger ones. Estimated models are included and marked, using their token price.</p>
+      <p>Move the slider to lean toward cheaper models or stronger ones. Cost here is the per-token price, so every model is compared on the same basis.</p>
     </div>
     <div class="slider-card">
       <div class="slider-ends"><span>Lean on <b>cost</b></span><span>Lean on <b>quality</b></span></div>
       <input type="range" id="balance" min="0" max="100" value="${state.slider}" aria-label="Balance between cost and quality">
       <div class="slider-readout">Right now: <b>${Math.round(weight * 100)}% quality</b> &middot; ${Math.round((1 - weight) * 100)}% cost &middot; leaning on ${leanLabel()}</div>
     </div>
-    <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost</span><span class="cell">Time / task</span></div>
+    <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
     <div class="list">${rows.map((model, index) => rowHtml(model, index + 1)).join("")}</div>
   </section>`;
 }
