@@ -117,6 +117,51 @@ class Engine:
                                 ent["cost_task"] = round(ent["cost_task"] * ratio, 4)
                                 ent["detail"]["cost_adjusted"] = round(ratio, 3)
                     break
+        existing_plains = {ent["plain"] for ent in entities}
+        lb_by_name = {}
+        for r in data.get("livebench", []):
+            lb_by_name.setdefault(r["name"], {})[r["kind"]] = r
+        for lb_name, kinds in lb_by_name.items():
+            plain = canon(lb_name)
+            if not plain or plain in existing_plains:
+                continue
+            coding = kinds.get("livebench_coding", {}).get("score")
+            if coding is None:
+                continue
+            global_row = kinds.get("livebench_global", {})
+            cost = (global_row.get("extra") or {}).get("cost_per_task")
+            ent = {
+                "slug": "livebench-" + plain,
+                "plain": plain,
+                "name": lb_name,
+                "harness": None,
+                "effort": None,
+                "measured": False,
+                "coding_index": coding,
+                "cost_task": cost,
+                "wall_time_s": None,
+                "intelligence": global_row.get("score"),
+                "price_mtok": None,
+                "model_name": lb_name,
+                "est_band": None,
+                "detail": {"source": "livebench"},
+                "meta": None,
+                "meta_min": None,
+                "meta_max": None,
+                "n_sources": 1,
+                "components": {},
+                "categories": [],
+            }
+            for m in market_rows:
+                if m.get("extra", {}).get("or_id") and canon(m["extra"]["or_id"]) == plain:
+                    p = m["extra"].get("price_blended")
+                    if p is not None:
+                        ent["price_mtok"] = p
+                        ent["price_source"] = "openrouter"
+                        ent["detail"]["price_input"] = m["extra"].get("price_prompt")
+                        ent["detail"]["price_output"] = m["extra"].get("price_completion")
+                    break
+            entities.append(ent)
         new_slugs = set()
         for ch in self.store.recent_changes(400):
             if ch["event"] == "new" and ch["slug"]:

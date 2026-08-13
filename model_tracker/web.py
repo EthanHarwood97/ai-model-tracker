@@ -34,7 +34,19 @@ def create_app(engine, scheduler=None):
 
     @app.get("/api/views/est")
     def view_est():
-        rows = [s for s in engine.store.latest_scores() if not s["measured"]]
+        rows = [
+            s for s in engine.store.latest_scores()
+            if not s["measured"] and (json.loads(s.get("detail") or "{}").get("source") != "livebench")
+        ]
+        rows.sort(key=lambda s: -(s["coding_index"] or 0))
+        return [_entity_dict(s) for s in rows]
+
+    @app.get("/api/views/livebench")
+    def view_livebench():
+        rows = [
+            s for s in engine.store.latest_scores()
+            if json.loads(s.get("detail") or "{}").get("source") == "livebench"
+        ]
         rows.sort(key=lambda s: -(s["coding_index"] or 0))
         return [_entity_dict(s) for s in rows]
 

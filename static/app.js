@@ -3,6 +3,7 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   coding: [],
   est: [],
+  livebench: [],
   page: "budget",
   staticMode: false,
 };
@@ -56,7 +57,7 @@ function spend(model) {
 }
 
 function isEstimated(model) {
-  return !model.measured;
+  return !model.measured && model.detail?.source !== "livebench";
 }
 
 function allModels() {
@@ -66,7 +67,8 @@ function allModels() {
 function badges(model) {
   const output = [];
   const detail = model.detail || {};
-  if (isEstimated(model)) output.push('<span class="badge est" title="Predicted score: not yet measured on the coding-agent benchmark">Estimated</span>');
+  if (detail.source === "livebench") output.push('<span class="badge lb" title="LiveBench coding score - a different benchmark from the AA coding-agent test">LiveBench</span>');
+  else if (isEstimated(model)) output.push('<span class="badge est" title="Predicted score: not yet measured on the coding-agent benchmark">Estimated</span>');
   if (model.is_new) output.push('<span class="badge new">New</span>');
   if (isEstimated(model) && detail.quirky_family) output.push('<span class="badge warn">Family caution</span>');
   return output.join("");
@@ -81,12 +83,13 @@ function tierRows(kind) {
 
 function rowHtml(model, rank) {
   const estimated = isEstimated(model);
+  const livebench = model.detail?.source === "livebench";
   const parts = String(model.name || "").split(" - ");
   const harness = parts.length > 1 ? parts[0] : "";
   const modelName = parts.length > 1 ? parts.slice(1).join(" - ") : String(model.name || "");
   const harnessLabel = harness ? `<span class="harness">${esc(harness)}</span>` : "";
-  const scoreNote = estimated ? `<small>predicted &plusmn;${num((model.detail?.band ?? 0.06) * 100, 0)}</small>` : `<small>coding score</small>`;
-  return `<article class="row ${estimated ? "est-row" : ""}">
+  const scoreNote = livebench ? `<small>LiveBench coding</small>` : estimated ? `<small>predicted &plusmn;${num((model.detail?.band ?? 0.06) * 100, 0)}</small>` : `<small>coding score</small>`;
+  return `<article class="row ${estimated ? "est-row" : ""} ${livebench ? "lb-row" : ""}">
     <span class="rank">${rank}</span>
     <div class="model"><strong>${esc(modelName)}</strong>${harnessLabel}${badges(model)}</div>
     <div class="cell score-cell"><b>${num(quality(model))}</b>${scoreNote}</div>
@@ -100,6 +103,18 @@ function renderTier(kind) {
   const tier = tiers[kind];
   const rows = tierRows(kind);
   const estimatedCount = rows.filter(isEstimated).length;
+  const livebenchRows = state.livebench
+    .filter((model) => {
+      const cost = spend(model);
+      if (kind === "frontier") return true;
+      if (cost === null || cost === undefined) return false;
+      return kind === "budget" ? cost <= 0.5 : cost > 0.5 && cost <= 3;
+    })
+    .sort((a, b) => quality(b) - quality(a))
+    .slice(0, 10);
+  const livebenchSection = livebenchRows.length
+    ? `<h2 class="radar-heading">Also scored by LiveBench <span>different benchmark, shown separately</span></h2><div class="list">${livebenchRows.map((model, index) => rowHtml(model, index + 1)).join("")}</div>`
+    : "";
   return `<section class="page">
     <div class="page-head">
       <span class="eyebrow">${esc(tier.label)}</span>
@@ -109,6 +124,7 @@ function renderTier(kind) {
     <div class="tier-summary"><b>${esc(tier.rule)}</b><span>Task costs are scaled to current API pricing when a model's price changed since the last benchmark. Estimated models use their listed price per 1M tokens.</span></div>
     <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
     <div class="list">${rows.length ? rows.map((model, index) => rowHtml(model, index + 1)).join("") : `<div class="empty-state">No models match this tier yet.</div>`}</div>
+    ${livebenchSection}
   </section>`;
 }
 
@@ -135,17 +151,20 @@ async function loadData() {
   try {
     const statusResponse = await fetch("/api/status");
     if (!statusResponse.ok) throw new Error("Static mode");
-    const [coding, est] = await Promise.all([
+    const [coding, est, livebench] = await Promise.all([
       fetch("/api/views/coding").then((response) => response.json()),
       fetch("/api/views/est").then((response) => response.json()),
+      fetch("/api/views/livebench").then((response) => response.json()),
     ]);
     state.coding = coding || [];
     state.est = est || [];
+    state.livebench = livebench || [];
   } catch {
     state.staticMode = true;
     const data = await fetch("data.json", { cache: "no-store" }).then((response) => response.json());
     state.coding = data.coding || [];
     state.est = data.est || [];
+    state.livebench = data.livebench || [];
   }
   updateHeader();
   render();

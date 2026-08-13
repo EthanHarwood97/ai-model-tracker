@@ -92,6 +92,9 @@ main { margin: 0 auto; max-width: 1100px; padding: clamp(28px, 6vw, 64px) clamp(
 .badge { background: var(--orange-soft); border-radius: 999px; color: var(--orange); display: inline-block; font-size: 9px; font-weight: 700; margin-left: 8px; padding: 2px 7px; vertical-align: 1px; }
 .badge.new { background: #fff3dd; color: #9b6a18; }
 .badge.warn { background: #ffe9e6; color: #b0432f; }
+.badge.lb { background: #eeeaff; color: #7562b4; }
+.row.lb-row .score-cell b { color: #7562b4; }
+.row.lb-row .score-cell small { color: #7562b4; }
 .row.est-row { background: #fcfaf3; }
 .est-row .score-cell b { color: var(--orange); }
 .est-row .score-cell small { color: var(--orange); }

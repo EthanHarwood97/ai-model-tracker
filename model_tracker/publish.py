@@ -77,7 +77,14 @@ def _views(engine):
     scores = engine.store.latest_scores()
     meta = sorted([s for s in scores if s["meta"] is not None], key=lambda s: -s["meta"])
     coding = sorted([s for s in scores if s["measured"]], key=lambda s: -(s["coding_index"] or 0))
-    est = sorted([s for s in scores if not s["measured"]], key=lambda s: -(s["coding_index"] or 0))
+    est = sorted(
+        [s for s in scores if not s["measured"] and (json.loads(s.get("detail") or "{}").get("source") != "livebench")],
+        key=lambda s: -(s["coding_index"] or 0),
+    )
+    livebench = sorted(
+        [s for s in scores if json.loads(s.get("detail") or "{}").get("source") == "livebench"],
+        key=lambda s: -(s["coding_index"] or 0),
+    )
     value = [
         s for s in scores
         if s["cost_task"] is not None or s["price_mtok"] is not None
@@ -87,6 +94,7 @@ def _views(engine):
         "meta": [_entity(s) for s in meta],
         "coding": [_entity(s) for s in coding],
         "est": [_entity(s) for s in est],
+        "livebench": [_entity(s) for s in livebench],
         "value": [_entity(s) for s in value],
     }
 

@@ -34,6 +34,19 @@ def fetch(f):
     coding_cols = set(cats.get("Coding", []) + cats.get("Agentic Coding", []))
     reasoning_cols = set(cats.get("Reasoning", []))
     agentic_cols = set(cats.get("Agentic Coding", []))
+    cost_by_model = {}
+    try:
+        cost_r = f.get(f"https://livebench.ai/cost_{release}.csv", ttl=86400)
+        cost_reader = csv.DictReader(io.StringIO(cost_r.text))
+        for rec in cost_reader:
+            raw = rec.get("cost_per_successful_task")
+            if rec.get("model") and raw not in (None, ""):
+                try:
+                    cost_by_model[rec["model"]] = float(raw)
+                except ValueError:
+                    pass
+    except Exception:
+        pass
     rows = []
     for rec in reader:
         model = rec.get("model")
@@ -59,7 +72,10 @@ def fetch(f):
         def emit(kind, value):
             if value is None:
                 return
-            rows.append({"kind": kind, "name": model, "slug": None, "score": value, "extra": {}})
+            extra = {}
+            if kind == "livebench_global" and model in cost_by_model:
+                extra["cost_per_task"] = cost_by_model[model]
+            rows.append({"kind": kind, "name": model, "slug": None, "score": value, "extra": extra})
 
         emit("livebench_global", round(sum(allv) / len(allv), 2) if allv else None)
         emit("livebench_coding", mean_of(coding_cols))
