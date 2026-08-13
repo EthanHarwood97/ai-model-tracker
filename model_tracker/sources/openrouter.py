@@ -16,6 +16,10 @@ def fetch(f):
 
         prompt = fnum(pricing.get("prompt"))
         completion = fnum(pricing.get("completion"))
+        if prompt is not None:
+            prompt = round(prompt * 1e6, 4)
+        if completion is not None:
+            completion = round(completion * 1e6, 4)
         blended = None
         if prompt is not None and completion is not None:
             blended = round((prompt * 3 + completion) / 4, 4)

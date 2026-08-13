@@ -100,14 +100,15 @@ class Engine:
         entities = compute_entities(coding_rows, model_rows, est_rows, attach, comps, self.cfg)
         market_rows = data.get("openrouter", [])
         for ent in entities:
-            if ent["price_mtok"] is not None:
-                continue
             for m in market_rows:
                 if m.get("extra", {}).get("or_id") and canon(m["extra"]["or_id"]) == ent["plain"]:
                     p = m["extra"].get("price_blended")
                     if p is not None:
                         ent["price_mtok"] = p
                         ent["price_source"] = "openrouter"
+                        ent.setdefault("detail", {})
+                        ent["detail"]["price_input"] = m["extra"].get("price_prompt")
+                        ent["detail"]["price_output"] = m["extra"].get("price_completion")
                     break
         new_slugs = set()
         for ch in self.store.recent_changes(400):
