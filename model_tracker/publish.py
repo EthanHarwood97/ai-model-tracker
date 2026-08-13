@@ -105,12 +105,48 @@ def _sources(engine):
     return out
 
 
+def _radar(engine):
+    articles = []
+    snaps = engine.store.snapshots_for("aa_changelog", 1)
+    if snaps:
+        for r in engine.store.rows_for(snaps[0]["id"]):
+            d = dict(r)
+            try:
+                extra = json.loads(d.get("extra") or "{}")
+            except Exception:
+                extra = {}
+            articles.append({"title": d["name"], "date": extra.get("date"), "slug": extra.get("slug")})
+    new_models = []
+    for name in SOURCES:
+        if name == "aa_changelog":
+            continue
+        history = engine.store.snapshots_for(name, 4)
+        if len(history) < 2:
+            continue
+        base_id = history[min(3, len(history) - 1)]["id"]
+        old_map = engine.store.row_map(base_id)
+        new_map = engine.store.row_map(history[0]["id"])
+        for key in new_map:
+            if key not in old_map:
+                row = new_map[key][0]
+                new_models.append({"name": row["name"], "source": name, "ts": history[0]["ts"]})
+    new_models = new_models[:15]
+    est = [s for s in engine.store.latest_scores() if not s["measured"]]
+    est.sort(key=lambda s: -(s["coding_index"] or 0))
+    candidates = [
+        {"name": s["name"], "coding_index": s["coding_index"], "price_mtok": s["price_mtok"]}
+        for s in est[:12]
+    ]
+    return {"articles": articles[:15], "new_models": new_models, "candidates": candidates}
+
+
 def build_site(engine, site_dir):
     site = pathlib.Path(site_dir)
     site.mkdir(parents=True, exist_ok=True)
     payload = _views(engine)
     payload["changes"] = engine.store.recent_changes(200)
     payload["sources"] = _sources(engine)
+    payload["radar"] = _radar(engine)
     payload["status"] = {
         "last_cycle": engine.last_cycle,
         "latest_ts": engine.store.latest_scores()[0]["ts"] if engine.store.latest_scores() else None,

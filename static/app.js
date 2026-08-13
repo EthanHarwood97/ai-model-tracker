@@ -3,6 +3,7 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   coding: [],
   est: [],
+  radar: { articles: [], new_models: [], candidates: [] },
   page: "leaderboard",
   slider: 50,
   staticMode: false,
@@ -134,8 +135,34 @@ function renderValue() {
   </section>`;
 }
 
+function renderRadar() {
+  const radar = state.radar || {};
+  const articles = radar.articles || [];
+  const newModels = radar.new_models || [];
+  const candidates = radar.candidates || [];
+  const hn = (name) => `https://hn.algolia.com/?q=${encodeURIComponent(name)}`;
+  const aa = (slug) => `https://artificialanalysis.ai/articles/${encodeURIComponent(slug || "")}`;
+  const articlesHtml = articles.length ? articles.map((article) => `<a class="radar-row" href="${esc(aa(article.slug))}" target="_blank" rel="noopener"><span class="radar-date">${esc(article.date || "")}</span><span class="radar-title">${esc(article.title)}</span><span class="radar-arrow">&nearr;</span></a>`).join("") : `<div class="radar-empty">No articles recorded yet.</div>`;
+  const newHtml = newModels.length ? newModels.map((entry) => `<div class="radar-row"><span class="radar-date">${esc(String(entry.ts || "").slice(0, 10))}</span><span class="radar-title">${esc(entry.name)} <em>new on ${esc(entry.source)}</em></span><a class="radar-arrow" href="${esc(hn(entry.name))}" target="_blank" rel="noopener" title="Search Hacker News">&nearr;</a></div>`).join("") : `<div class="radar-empty">No new benchmark entries since the first snapshot.</div>`;
+  const candidatesHtml = candidates.length ? candidates.map((model) => `<div class="radar-row"><span class="radar-date">${num(model.coding_index, 1)}</span><span class="radar-title">${esc(model.name)} <em>predicted, not benchmarked</em></span><a class="radar-arrow" href="${esc(hn(model.name))}" target="_blank" rel="noopener" title="Search Hacker News">&nearr;</a></div>`).join("") : `<div class="radar-empty">Nothing to watch right now.</div>`;
+  return `<section class="page">
+    <div class="page-head">
+      <h1>Release radar</h1>
+      <p>The day-0 workflow, in one page: what just landed, what is new on the benchmarks, and which unbenchmarked models are worth a look.</p>
+    </div>
+    <h2 class="radar-heading">Just landed <span>Artificial Analysis changelog</span></h2>
+    <div class="radar-list">${articlesHtml}</div>
+    <h2 class="radar-heading">New on the benchmarks <span>from our own snapshots</span></h2>
+    <div class="radar-list">${newHtml}</div>
+    <h2 class="radar-heading">Worth watching <span>top predicted, not yet benchmarked</span></h2>
+    <div class="radar-list">${candidatesHtml}</div>
+    <p class="radar-note">Verdicts move for about a week after release. The arrow opens the Hacker News thread or the full AA article, where practitioners post hands-on reports.</p>
+  </section>`;
+}
+
 function render() {
-  $("#app").innerHTML = state.page === "value" ? renderValue() : renderLeaderboard();
+  const output = state.page === "value" ? renderValue() : state.page === "radar" ? renderRadar() : renderLeaderboard();
+  $("#app").innerHTML = output;
   document.querySelectorAll(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.page === state.page));
   const slider = $("#balance");
   if (slider) {
@@ -165,17 +192,20 @@ async function loadData() {
   try {
     const statusResponse = await fetch("/api/status");
     if (!statusResponse.ok) throw new Error("Static mode");
-    const [coding, est] = await Promise.all([
+    const [coding, est, radar] = await Promise.all([
       fetch("/api/views/coding").then((response) => response.json()),
       fetch("/api/views/est").then((response) => response.json()),
+      fetch("/api/radar").then((response) => response.json()),
     ]);
     state.coding = coding || [];
     state.est = est || [];
+    state.radar = radar || {};
   } catch {
     state.staticMode = true;
     const data = await fetch("data.json", { cache: "no-store" }).then((response) => response.json());
     state.coding = data.coding || [];
     state.est = data.est || [];
+    state.radar = data.radar || {};
   }
   updateHeader();
   render();

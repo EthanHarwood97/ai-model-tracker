@@ -61,6 +61,30 @@ def create_app(engine, scheduler=None):
             "latest_ts": engine.store.latest_scores()[0]["ts"] if engine.store.latest_scores() else None,
         }
 
+    @app.get("/api/radar")
+    def radar():
+        articles = []
+        snaps = engine.store.snapshots_for("aa_changelog", 1)
+        if snaps:
+            for r in engine.store.rows_for(snaps[0]["id"]):
+                d = dict(r)
+                try:
+                    extra = json.loads(d.get("extra") or "{}")
+                except Exception:
+                    extra = {}
+                articles.append({"title": d["name"], "date": extra.get("date"), "slug": extra.get("slug")})
+        new_models = [
+            {"name": c["name"], "source": c["source"], "ts": c["ts"]}
+            for c in engine.store.recent_changes(120) if c["event"] == "new"
+        ]
+        est = [s for s in engine.store.latest_scores() if not s["measured"]]
+        est.sort(key=lambda s: -(s["coding_index"] or 0))
+        candidates = [
+            {"name": s["name"], "coding_index": s["coding_index"], "price_mtok": s["price_mtok"]}
+            for s in est[:12]
+        ]
+        return {"articles": articles[:15], "new_models": new_models[:15], "candidates": candidates}
+
     @app.post("/api/refresh")
     def refresh():
         if not refresh_lock.acquire(blocking=False):

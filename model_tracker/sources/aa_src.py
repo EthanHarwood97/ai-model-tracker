@@ -21,6 +21,6 @@ def fetch_changelog(f):
             "name": e["title"],
             "slug": None,
             "score": None,
-            "extra": {"date": e.get("date")},
+            "extra": {"date": e.get("date"), "slug": e.get("slug")},
         })
     return rows
