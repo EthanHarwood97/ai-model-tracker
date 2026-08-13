@@ -11,20 +11,20 @@ const tiers = {
   budget: {
     label: "Budget picks",
     title: "Good models. Very low cost.",
-    description: "The models to reach for first when you want strong coding help without spending much.",
-    rule: "Up to $0.50 per task",
+    description: "The 20 strongest models under $0.50 per task. Reach for these first when you want solid coding help without spending much.",
+    rule: "Up to $0.50 per task, ranked by score",
   },
   workhorse: {
     label: "Workhorse picks",
     title: "A little more room to work.",
-    description: "The practical middle ground: more capable than the budget tier, without paying frontier prices.",
-    rule: "$0.50 to $3.00 per task",
+    description: "The 20 strongest models between $0.50 and $3.00 per task. More capability than budget, without paying frontier prices.",
+    rule: "$0.50 to $3.00 per task, ranked by score",
   },
   frontier: {
     label: "Frontier picks",
     title: "For the hardest jobs.",
-    description: "The strongest coding agents in the current snapshot. Price is secondary here.",
-    rule: "Top coding scores, any price",
+    description: "The 25 strongest coding agents in the current snapshot, whatever the price.",
+    rule: "Top 25 by coding score, any price",
   },
 };
 
@@ -75,8 +75,8 @@ function badges(model) {
 function tierRows(kind) {
   const models = allModels().filter((model) => spend(model) !== null && spend(model) !== undefined);
   if (kind === "frontier") return models.sort((a, b) => quality(b) - quality(a)).slice(0, 25);
-  if (kind === "budget") return models.filter((model) => spend(model) <= 0.5 && quality(model) >= 50).sort((a, b) => quality(b) - quality(a));
-  return models.filter((model) => spend(model) > 0.5 && spend(model) <= 3 && quality(model) >= 50).sort((a, b) => quality(b) - quality(a));
+  if (kind === "budget") return models.filter((model) => spend(model) <= 0.5).sort((a, b) => quality(b) - quality(a)).slice(0, 20);
+  return models.filter((model) => spend(model) > 0.5 && spend(model) <= 3).sort((a, b) => quality(b) - quality(a)).slice(0, 20);
 }
 
 function rowHtml(model, rank) {
