@@ -3,10 +3,29 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   coding: [],
   est: [],
-  radar: { articles: [], new_models: [], candidates: [] },
-  page: "leaderboard",
-  slider: 50,
+  page: "budget",
   staticMode: false,
+};
+
+const tiers = {
+  budget: {
+    label: "Budget picks",
+    title: "Good models. Very low cost.",
+    description: "The models to reach for first when you want strong coding help without spending much.",
+    rule: "Up to $0.50 per task",
+  },
+  workhorse: {
+    label: "Workhorse picks",
+    title: "A little more room to work.",
+    description: "The practical middle ground: more capable than the budget tier, without paying frontier prices.",
+    rule: "$0.50 to $3.00 per task",
+  },
+  frontier: {
+    label: "Frontier picks",
+    title: "For the hardest jobs.",
+    description: "The strongest coding agents in the current snapshot. Price is secondary here.",
+    rule: "Top coding scores, any price",
+  },
 };
 
 function esc(value) {
@@ -25,8 +44,15 @@ function money(value) {
 function minutes(seconds) {
   if (seconds === null || seconds === undefined || Number.isNaN(Number(seconds))) return "—";
   const mins = Math.round(Number(seconds) / 60);
-  if (mins < 60) return `${mins}m`;
-  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function quality(model) {
+  return Number(model.coding_index || 0);
+}
+
+function spend(model) {
+  return model.cost_task !== null && model.cost_task !== undefined ? model.cost_task : model.price_mtok;
 }
 
 function isEstimated(model) {
@@ -37,47 +63,20 @@ function allModels() {
   return [...state.coding, ...state.est];
 }
 
-function quality(model) {
-  return Number(model.coding_index || 0);
-}
-
-function band(model) {
-  const width = (model.detail?.band ?? 0.06) * 100;
-  return [Math.max(0, quality(model) - width), Math.min(100, quality(model) + width)];
-}
-
-function sliderCost(model) {
-  return model.price_mtok !== null && model.price_mtok !== undefined ? model.price_mtok : model.cost_task;
-}
-
-function costNorm(model) {
-  const costs = allModels().map(sliderCost).filter((value) => value !== null && value !== undefined);
-  if (costs.length < 2) return 0;
-  const min = Math.min(...costs);
-  const max = Math.max(...costs);
-  const cost = sliderCost(model);
-  if (cost === null || cost === undefined) return 0.5;
-  return max === min ? 0 : (cost - min) / (max - min);
-}
-
-function blendedScore(model) {
-  const weight = state.slider / 100;
-  return weight * quality(model) + (1 - weight) * (1 - costNorm(model)) * 100;
-}
-
-function leanLabel() {
-  if (state.slider >= 60) return "quality";
-  if (state.slider <= 40) return "cost";
-  return "a balance of both";
-}
-
 function badges(model) {
   const output = [];
   const detail = model.detail || {};
-  if (isEstimated(model)) output.push('<span class="badge est" title="Predicted score: this model has not appeared on the coding benchmark yet">Estimated</span>');
+  if (isEstimated(model)) output.push('<span class="badge est" title="Predicted score: not yet measured on the coding-agent benchmark">Estimated</span>');
   if (model.is_new) output.push('<span class="badge new">New</span>');
-  if (isEstimated(model) && detail.quirky_family) output.push('<span class="badge warn" title="This model family has underperformed predictions in the past">Family caution</span>');
+  if (isEstimated(model) && detail.quirky_family) output.push('<span class="badge warn">Family caution</span>');
   return output.join("");
+}
+
+function tierRows(kind) {
+  const models = allModels().filter((model) => spend(model) !== null && spend(model) !== undefined);
+  if (kind === "frontier") return models.sort((a, b) => quality(b) - quality(a)).slice(0, 25);
+  if (kind === "budget") return models.filter((model) => spend(model) <= 0.5 && quality(model) >= 50).sort((a, b) => quality(b) - quality(a));
+  return models.filter((model) => spend(model) > 0.5 && spend(model) <= 3 && quality(model) >= 50).sort((a, b) => quality(b) - quality(a));
 }
 
 function rowHtml(model, rank) {
@@ -97,108 +96,25 @@ function rowHtml(model, rank) {
   </article>`;
 }
 
-function sortedByQuality() {
-  return allModels().sort((a, b) => quality(b) - quality(a));
-}
-
-function sortedByBalance() {
-  return allModels().sort((a, b) => blendedScore(b) - blendedScore(a));
-}
-
-function renderLeaderboard() {
-  const rows = sortedByQuality();
+function renderTier(kind) {
+  const tier = tiers[kind];
+  const rows = tierRows(kind);
+  const estimatedCount = rows.filter(isEstimated).length;
   return `<section class="page">
     <div class="page-head">
-      <h1>Complex tasks</h1>
-      <p>For agentic, multi-step coding work: long tasks, terminal use, repo-scale changes. Ranked by coding score out of 100. ${state.coding.length} measured, ${state.est.length} predicted.</p>
+      <span class="eyebrow">${esc(tier.label)}</span>
+      <h1>${tier.title}</h1>
+      <p>${tier.description} ${estimatedCount ? `${estimatedCount} predicted model${estimatedCount === 1 ? "" : "s"} included and marked.` : ""}</p>
     </div>
+    <div class="tier-summary"><b>${esc(tier.rule)}</b><span>Measured models use cost per task. Estimated models use their listed price per 1M tokens.</span></div>
     <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
-    <div class="list">${rows.map((model, index) => rowHtml(model, index + 1)).join("")}</div>
-  </section>`;
-}
-
-function rowGenHtml(model, rank) {
-  const estimated = isEstimated(model);
-  const parts = String(model.name || "").split(" - ");
-  const harness = parts.length > 1 ? parts[0] : "";
-  const modelName = parts.length > 1 ? parts.slice(1).join(" - ") : String(model.name || "");
-  const harnessLabel = harness ? `<span class="harness">${esc(harness)}</span>` : "";
-  return `<article class="row row-gen ${estimated ? "est-row" : ""}">
-    <span class="rank">${rank}</span>
-    <div class="model"><strong>${esc(modelName)}</strong>${harnessLabel}${badges(model)}</div>
-    <div class="cell gen-cell"><b>${num(model.intelligence)}</b><small>general score</small></div>
-    <div class="cell"><b>${num(quality(model))}</b><small>${estimated ? "coding, predicted" : "coding score"}</small></div>
-    <div class="cell"><b>${money(model.price_mtok)}</b><small>per 1M tokens</small></div>
-  </article>`;
-}
-
-function renderGeneral() {
-  const rows = allModels().sort((a, b) => Number(b.intelligence || 0) - Number(a.intelligence || 0));
-  return `<section class="page">
-    <div class="page-head">
-      <h1>General work</h1>
-      <p>For everyday use: writing, reasoning, explaining, reviewing. Ranked by the general intelligence score. The coding column is there for reference.</p>
-    </div>
-    <div class="list-head list-head-gen"><span class="rank">#</span><span class="model">Model</span><span class="cell">General score</span><span class="cell">Coding score</span><span class="cell">$ / 1M tokens</span></div>
-    <div class="list">${rows.map((model, index) => rowGenHtml(model, index + 1)).join("")}</div>
-  </section>`;
-}
-
-function renderValue() {
-  const rows = sortedByBalance();
-  const weight = state.slider / 100;
-  return `<section class="page">
-    <div class="page-head">
-      <h1>Cost vs quality</h1>
-      <p>Move the slider to lean toward cheaper models or stronger ones. Cost here is the per-token price, so every model is compared on the same basis.</p>
-    </div>
-    <div class="slider-card">
-      <div class="slider-ends"><span>Lean on <b>cost</b></span><span>Lean on <b>quality</b></span></div>
-      <input type="range" id="balance" min="0" max="100" value="${state.slider}" aria-label="Balance between cost and quality">
-      <div class="slider-readout">Right now: <b>${Math.round(weight * 100)}% quality</b> &middot; ${Math.round((1 - weight) * 100)}% cost &middot; leaning on ${leanLabel()}</div>
-    </div>
-    <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
-    <div class="list">${rows.map((model, index) => rowHtml(model, index + 1)).join("")}</div>
-  </section>`;
-}
-
-function renderRadar() {
-  const radar = state.radar || {};
-  const articles = radar.articles || [];
-  const newModels = radar.new_models || [];
-  const candidates = radar.candidates || [];
-  const hn = (name) => `https://hn.algolia.com/?q=${encodeURIComponent(name)}`;
-  const aa = (slug) => `https://artificialanalysis.ai/articles/${encodeURIComponent(slug || "")}`;
-  const articlesHtml = articles.length ? articles.map((article) => `<a class="radar-row" href="${esc(aa(article.slug))}" target="_blank" rel="noopener"><span class="radar-date">${esc(article.date || "")}</span><span class="radar-title">${esc(article.title)}</span><span class="radar-arrow">&nearr;</span></a>`).join("") : `<div class="radar-empty">No articles recorded yet.</div>`;
-  const newHtml = newModels.length ? newModels.map((entry) => `<div class="radar-row"><span class="radar-date">${esc(String(entry.ts || "").slice(0, 10))}</span><span class="radar-title">${esc(entry.name)} <em>new on ${esc(entry.source)}</em></span><a class="radar-arrow" href="${esc(hn(entry.name))}" target="_blank" rel="noopener" title="Search Hacker News">&nearr;</a></div>`).join("") : `<div class="radar-empty">No new benchmark entries since the first snapshot.</div>`;
-  const candidatesHtml = candidates.length ? candidates.map((model) => `<div class="radar-row"><span class="radar-date">${num(model.coding_index, 1)}</span><span class="radar-title">${esc(model.name)} <em>predicted, not benchmarked</em></span><a class="radar-arrow" href="${esc(hn(model.name))}" target="_blank" rel="noopener" title="Search Hacker News">&nearr;</a></div>`).join("") : `<div class="radar-empty">Nothing to watch right now.</div>`;
-  return `<section class="page">
-    <div class="page-head">
-      <h1>Release radar</h1>
-      <p>The day-0 workflow, in one page: what just landed, what is new on the benchmarks, and which unbenchmarked models are worth a look.</p>
-    </div>
-    <h2 class="radar-heading">Just landed <span>Artificial Analysis changelog</span></h2>
-    <div class="radar-list">${articlesHtml}</div>
-    <h2 class="radar-heading">New on the benchmarks <span>from our own snapshots</span></h2>
-    <div class="radar-list">${newHtml}</div>
-    <h2 class="radar-heading">Worth watching <span>top predicted, not yet benchmarked</span></h2>
-    <div class="radar-list">${candidatesHtml}</div>
-    <p class="radar-note">Verdicts move for about a week after release. The arrow opens the Hacker News thread or the full AA article, where practitioners post hands-on reports.</p>
+    <div class="list">${rows.length ? rows.map((model, index) => rowHtml(model, index + 1)).join("") : `<div class="empty-state">No models match this tier yet.</div>`}</div>
   </section>`;
 }
 
 function render() {
-  const output = state.page === "value" ? renderValue() : state.page === "radar" ? renderRadar() : state.page === "general" ? renderGeneral() : renderLeaderboard();
-  $("#app").innerHTML = output;
+  $("#app").innerHTML = renderTier(state.page);
   document.querySelectorAll(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.page === state.page));
-  const slider = $("#balance");
-  if (slider) {
-    slider.addEventListener("input", () => {
-      state.slider = Number(slider.value);
-      $("#app").innerHTML = renderValue();
-      bindNav();
-    });
-  }
 }
 
 function bindNav() {
@@ -212,27 +128,24 @@ function bindNav() {
 
 function updateHeader() {
   $("#last-update").textContent = state.staticMode ? "Static snapshot" : "Live data";
-  $("#footer-updated").textContent = `${state.coding.length} measured + ${state.est.length} predicted coding models · auto-updated`;
+  $("#footer-updated").textContent = `${state.coding.length} measured + ${state.est.length} predicted models · auto-updated`;
 }
 
 async function loadData() {
   try {
     const statusResponse = await fetch("/api/status");
     if (!statusResponse.ok) throw new Error("Static mode");
-    const [coding, est, radar] = await Promise.all([
+    const [coding, est] = await Promise.all([
       fetch("/api/views/coding").then((response) => response.json()),
       fetch("/api/views/est").then((response) => response.json()),
-      fetch("/api/radar").then((response) => response.json()),
     ]);
     state.coding = coding || [];
     state.est = est || [];
-    state.radar = radar || {};
   } catch {
     state.staticMode = true;
     const data = await fetch("data.json", { cache: "no-store" }).then((response) => response.json());
     state.coding = data.coding || [];
     state.est = data.est || [];
-    state.radar = data.radar || {};
   }
   updateHeader();
   render();
