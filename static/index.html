@@ -1,59 +1,83 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Model Score Tracker</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0e0d">
+  <meta name="description" content="A live observatory for AI model performance, cost, and confidence.">
+  <title>Model Signal / AI leaderboard observatory</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <div class="brand">
-    <h1>AI Model Score Tracker</h1>
-    <span class="subtitle">multi-source meta-score &middot; EST estimates for unbenchmarked models</span>
+  <div class="app-shell">
+    <aside class="rail" aria-label="Primary navigation">
+      <div class="rail-top">
+        <a class="wordmark" href="." aria-label="Model Signal home">
+          <span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span><b>MODEL</b><em>SIGNAL</em></span>
+        </a>
+        <div class="rail-caption">Personal intelligence desk<br>tracking the frontier</div>
+      </div>
+
+      <div class="rail-section-label">Workspace</div>
+      <nav class="nav-stack" id="nav" aria-label="Views">
+        <button class="nav-item active" data-view="overview" aria-current="page">
+          <span class="nav-num">01</span><span class="nav-name">Overview</span><span class="nav-mark"></span>
+        </button>
+        <button class="nav-item" data-view="meta">
+          <span class="nav-num">02</span><span class="nav-name">Meta ranking</span><span class="nav-mark"></span>
+        </button>
+        <button class="nav-item" data-view="coding">
+          <span class="nav-num">03</span><span class="nav-name">Coding agents</span><span class="nav-mark"></span>
+        </button>
+        <button class="nav-item" data-view="est">
+          <span class="nav-num">04</span><span class="nav-name">Estimates</span><span class="nav-mark"></span>
+        </button>
+        <button class="nav-item" data-view="value">
+          <span class="nav-num">05</span><span class="nav-name">Value watch</span><span class="nav-mark"></span>
+        </button>
+        <button class="nav-item" data-view="changes">
+          <span class="nav-num">06</span><span class="nav-name">Change log</span><span class="nav-mark"></span>
+        </button>
+        <button class="nav-item" data-view="sources">
+          <span class="nav-num">07</span><span class="nav-name">Sources</span><span class="nav-mark"></span>
+        </button>
+      </nav>
+
+      <div class="rail-bottom">
+        <div class="sync-card" id="sync-card">
+          <span class="status-orb" aria-hidden="true"></span>
+          <div><b id="sync-label">Awaiting scan</b><small id="source-summary">Loading source health</small></div>
+        </div>
+        <button id="refresh-btn" class="refresh-button" title="Run a fresh scan">
+          <span>Refresh scan</span><kbd>R</kbd>
+        </button>
+      </div>
+    </aside>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="mobile-wordmark"><span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span><b>MODEL SIGNAL</b></div>
+        <div class="location"><span class="location-pip"></span><span id="section-kicker">Signal desk / overview</span></div>
+        <div class="topbar-meta"><span id="last-update">Connecting to index</span><span class="topbar-divider"></span><span>UTC</span></div>
+      </header>
+
+      <main id="app-main" tabindex="-1"></main>
+
+      <footer class="footer-bar">
+        <span>MODEL SIGNAL <b>///</b> PERSONAL INDEX</span>
+        <span>13 live sources <b>·</b> SQLite snapshots <b>·</b> EST error ±0.06</span>
+      </footer>
+    </div>
   </div>
-  <div class="header-right">
-    <span id="last-update" class="muted"></span>
-    <button id="refresh-btn" title="force refresh all sources now">Refresh now</button>
-  </div>
-</header>
 
-<nav class="tabs" id="tabs">
-  <button data-view="meta" class="active">Meta Ranking</button>
-  <button data-view="coding">Coding Leaderboard</button>
-  <button data-view="est">EST &middot; Unbenchmarked</button>
-  <button data-view="value">Value ($)</button>
-  <button data-view="changes">Change Log</button>
-  <button data-view="sources">Sources</button>
-</nav>
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="detail-drawer" id="detail-drawer" aria-labelledby="drawer-title" aria-hidden="true" tabindex="-1">
+    <button class="drawer-close" id="drawer-close" aria-label="Close model details">×</button>
+    <div id="drawer-content"></div>
+  </aside>
+  <div id="toast" role="status" aria-live="polite"></div>
 
-<main>
-  <section id="view-meta" class="view active">
-    <p class="hint">Weighted composite: coding-agent 35% &middot; intelligence 25% &middot; code correctness 20% &middot; human preference 10% &middot; agentic 10%. Weights renormalized over available categories. Click headers to sort.</p>
-    <table id="tbl-meta"></table>
-  </section>
-  <section id="view-coding" class="view">
-    <p class="hint">Artificial Analysis Coding Agent Index (DeepSWE + Terminal-Bench v2 + SWE-Atlas-QnA), scaled 0-100.</p>
-    <table id="tbl-coding"></table>
-  </section>
-  <section id="view-est" class="view">
-    <p class="hint">Estimated coding-agent scores from the Intelligence Index regression (r=0.898). &plusmn;0.06 band, dual-regression agreement check, quirky-family warnings.</p>
-    <table id="tbl-est"></table>
-  </section>
-  <section id="view-value" class="view">
-    <p class="hint">Score per dollar: coding index / cost-per-task (measured) or per-Mtok blended price (estimated).</p>
-    <table id="tbl-value"></table>
-  </section>
-  <section id="view-changes" class="view">
-    <p class="hint">New / updated / removed entries across all sources, newest first.</p>
-    <table id="tbl-changes"></table>
-  </section>
-  <section id="view-sources" class="view">
-    <p class="hint">Source health: last snapshot, rows, error state. Scheduler pauses a source after 4 consecutive failures.</p>
-    <table id="tbl-sources"></table>
-  </section>
-</main>
-
-<script src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
