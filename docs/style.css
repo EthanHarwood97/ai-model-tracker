@@ -87,6 +87,11 @@ main { margin: 0 auto; max-width: 900px; padding: clamp(28px, 6vw, 64px) clamp(1
 .cell small { display: block; font-size: 10px; margin-top: 3px; }
 .score-cell b { color: var(--green); font: 700 18px var(--display); }
 .badge { background: var(--orange-soft); border-radius: 999px; color: var(--orange); display: inline-block; font-size: 9px; font-weight: 700; margin-left: 8px; padding: 2px 7px; vertical-align: 1px; }
+.badge.new { background: #fff3dd; color: #9b6a18; }
+.badge.warn { background: #ffe9e6; color: #b0432f; }
+.row.est-row { background: #fcfaf3; }
+.est-row .score-cell b { color: var(--orange); }
+.est-row .score-cell small { color: var(--orange); }
 
 .slider-card {
   background: var(--panel);
