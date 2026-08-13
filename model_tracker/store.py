@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS scores(
   intelligence REAL,
   price_mtok REAL,
   cost_task REAL,
+  harness TEXT,
+  wall_time_s REAL,
   is_new INTEGER DEFAULT 0,
   detail TEXT
 );
@@ -74,6 +76,11 @@ class Store:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
+        for column, kind in (("harness", "TEXT"), ("wall_time_s", "REAL")):
+            try:
+                self.conn.execute(f"ALTER TABLE scores ADD COLUMN {column} {kind}")
+            except sqlite3.OperationalError:
+                pass
         self.conn.commit()
         self.lock = threading.Lock()
 
@@ -175,12 +182,14 @@ class Store:
                     json.dumps(s.get("components", {}), ensure_ascii=False),
                     s.get("coding_index"), s.get("intelligence"),
                     s.get("price_mtok"), s.get("cost_task"),
+                    s.get("harness"), s.get("wall_time_s"),
                     1 if s.get("is_new") else 0,
                     json.dumps(s.get("detail", {}), ensure_ascii=False),
                 ))
             self.conn.executemany(
                 "INSERT INTO scores(ts, slug, name, meta, meta_min, meta_max, measured, n_sources, components,"
-                " coding_index, intelligence, price_mtok, cost_task, is_new, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " coding_index, intelligence, price_mtok, cost_task, harness, wall_time_s, is_new, detail)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 payload,
             )
             self.conn.commit()

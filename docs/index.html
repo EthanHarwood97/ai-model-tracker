@@ -4,63 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f8f5">
-  <meta name="description" content="A clear view of AI model performance, predictions, and cost.">
   <title>AI Model Tracker</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="rail" aria-label="Primary navigation">
-      <div class="rail-top">
-        <a class="wordmark" href="." aria-label="AI Model Tracker home">
-          <span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span>AI Model Tracker</span>
-        </a>
-        <p class="rail-caption">Compare the models that matter, without the spreadsheet.</p>
-      </div>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>AI Model Tracker</div>
+    <nav class="nav" aria-label="Pages">
+      <button class="nav-btn active" data-page="leaderboard">Coding leaderboard</button>
+      <button class="nav-btn" data-page="value">Cost vs quality</button>
+    </nav>
+    <div class="updated" id="last-update">Loading…</div>
+  </header>
 
-      <nav class="nav-stack" id="nav" aria-label="Views">
-        <p class="nav-title">Views</p>
-        <button class="nav-item active" data-view="overview" aria-current="page"><span class="nav-icon">⌂</span><span>Overview</span></button>
-        <button class="nav-item" data-view="meta"><span class="nav-icon">↗</span><span>All models</span></button>
-        <button class="nav-item" data-view="coding"><span class="nav-icon">⌘</span><span>Coding scores</span></button>
-        <button class="nav-item" data-view="est"><span class="nav-icon">~</span><span>Predictions</span></button>
-        <button class="nav-item" data-view="value"><span class="nav-icon">$</span><span>Best value</span></button>
-        <button class="nav-item" data-view="changes"><span class="nav-icon">↕</span><span>What changed</span></button>
-        <button class="nav-item" data-view="sources"><span class="nav-icon">◌</span><span>Data sources</span></button>
-      </nav>
+  <main id="app"></main>
 
-      <div class="rail-bottom">
-        <div class="sync-card" id="sync-card">
-          <span class="status-orb" aria-hidden="true"></span>
-          <div><b id="sync-label">Loading</b><small id="source-summary">Checking sources</small></div>
-        </div>
-        <button id="refresh-btn" class="refresh-button" title="Run a fresh scan"><span>Refresh data</span><span class="refresh-arrow">↻</span></button>
-      </div>
-    </aside>
-
-    <div class="page-shell">
-      <header class="topbar">
-        <div class="mobile-wordmark"><span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span><b>AI MODEL TRACKER</b></div>
-        <div class="location"><span id="section-kicker">Overview</span></div>
-        <div class="topbar-meta"><span id="last-update">Connecting…</span><span class="topbar-divider"></span><span>Updated automatically</span></div>
-      </header>
-
-      <main id="app-main" tabindex="-1"></main>
-
-      <footer class="footer-bar">
-        <span>AI MODEL TRACKER</span>
-        <span>Performance, predictions, and price in one place.</span>
-      </footer>
-    </div>
-  </div>
-
-  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
-  <aside class="detail-drawer" id="detail-drawer" aria-labelledby="drawer-title" aria-hidden="true" tabindex="-1">
-    <button class="drawer-close" id="drawer-close" aria-label="Close model details">×</button>
-    <div id="drawer-content"></div>
-  </aside>
-  <div id="toast" role="status" aria-live="polite"></div>
+  <footer class="footer">
+    <span>Data: Artificial Analysis coding agents + LiveBench + more</span>
+    <span id="footer-updated"></span>
+  </footer>
 
   <script src="app.js"></script>
 </body>

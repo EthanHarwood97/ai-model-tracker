@@ -1,0 +1,18 @@
+const fs = require("fs");
+const data = JSON.parse(fs.readFileSync("docs/data.json", "utf8"));
+const coding = data.coding || [];
+console.log("coding rows:", coding.length);
+const quality = (c) => Number(c.coding_index || 0);
+const costOf = (c) => c.cost_task ?? c.price_mtok;
+const costs = coding.map(costOf).filter((v) => v !== null && v !== undefined);
+const min = Math.min(...costs), max = Math.max(...costs);
+console.log("cost range:", min.toFixed(3), "..", max.toFixed(3));
+const costNorm = (c) => { const v = costOf(c); return v === null || v === undefined ? 0 : (v - min) / (max - min); };
+const blended = (c, w) => w * quality(c) + (1 - w) * ((1 - costNorm(c)) * 100);
+const top = (w) => [...coding].sort((a, b) => blended(b, w) - blended(a, w)).slice(0, 5).map((c) => `${c.name.slice(0, 38)} q=${quality(c)} $${costOf(c)}`);
+console.log("QUALITY (slider 100):"); top(1).forEach((t) => console.log("  ", t));
+console.log("BALANCED (slider 50):"); top(0.5).forEach((t) => console.log("  ", t));
+console.log("COST (slider 0):"); top(0).forEach((t) => console.log("  ", t));
+const sample = coding[0];
+console.log("row fields:", Object.keys(sample).join(","));
+console.log("wall_time sample:", sample.wall_time_s, "harness:", sample.harness, "is_new:", sample.is_new);
