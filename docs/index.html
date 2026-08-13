@@ -3,70 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0c0e0d">
-  <meta name="description" content="A live observatory for AI model performance, cost, and confidence.">
-  <title>Model Signal / AI leaderboard observatory</title>
+  <meta name="theme-color" content="#f7f8f5">
+  <meta name="description" content="A clear view of AI model performance, predictions, and cost.">
+  <title>AI Model Tracker</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app-shell">
     <aside class="rail" aria-label="Primary navigation">
       <div class="rail-top">
-        <a class="wordmark" href="." aria-label="Model Signal home">
+        <a class="wordmark" href="." aria-label="AI Model Tracker home">
           <span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span><b>MODEL</b><em>SIGNAL</em></span>
+          <span>AI Model Tracker</span>
         </a>
-        <div class="rail-caption">Personal intelligence desk<br>tracking the frontier</div>
+        <p class="rail-caption">Compare the models that matter, without the spreadsheet.</p>
       </div>
 
-      <div class="rail-section-label">Workspace</div>
       <nav class="nav-stack" id="nav" aria-label="Views">
-        <button class="nav-item active" data-view="overview" aria-current="page">
-          <span class="nav-num">01</span><span class="nav-name">Overview</span><span class="nav-mark"></span>
-        </button>
-        <button class="nav-item" data-view="meta">
-          <span class="nav-num">02</span><span class="nav-name">Meta ranking</span><span class="nav-mark"></span>
-        </button>
-        <button class="nav-item" data-view="coding">
-          <span class="nav-num">03</span><span class="nav-name">Coding agents</span><span class="nav-mark"></span>
-        </button>
-        <button class="nav-item" data-view="est">
-          <span class="nav-num">04</span><span class="nav-name">Estimates</span><span class="nav-mark"></span>
-        </button>
-        <button class="nav-item" data-view="value">
-          <span class="nav-num">05</span><span class="nav-name">Value watch</span><span class="nav-mark"></span>
-        </button>
-        <button class="nav-item" data-view="changes">
-          <span class="nav-num">06</span><span class="nav-name">Change log</span><span class="nav-mark"></span>
-        </button>
-        <button class="nav-item" data-view="sources">
-          <span class="nav-num">07</span><span class="nav-name">Sources</span><span class="nav-mark"></span>
-        </button>
+        <p class="nav-title">Views</p>
+        <button class="nav-item active" data-view="overview" aria-current="page"><span class="nav-icon">⌂</span><span>Overview</span></button>
+        <button class="nav-item" data-view="meta"><span class="nav-icon">↗</span><span>All models</span></button>
+        <button class="nav-item" data-view="coding"><span class="nav-icon">⌘</span><span>Coding scores</span></button>
+        <button class="nav-item" data-view="est"><span class="nav-icon">~</span><span>Predictions</span></button>
+        <button class="nav-item" data-view="value"><span class="nav-icon">$</span><span>Best value</span></button>
+        <button class="nav-item" data-view="changes"><span class="nav-icon">↕</span><span>What changed</span></button>
+        <button class="nav-item" data-view="sources"><span class="nav-icon">◌</span><span>Data sources</span></button>
       </nav>
 
       <div class="rail-bottom">
         <div class="sync-card" id="sync-card">
           <span class="status-orb" aria-hidden="true"></span>
-          <div><b id="sync-label">Awaiting scan</b><small id="source-summary">Loading source health</small></div>
+          <div><b id="sync-label">Loading</b><small id="source-summary">Checking sources</small></div>
         </div>
-        <button id="refresh-btn" class="refresh-button" title="Run a fresh scan">
-          <span>Refresh scan</span><kbd>R</kbd>
-        </button>
+        <button id="refresh-btn" class="refresh-button" title="Run a fresh scan"><span>Refresh data</span><span class="refresh-arrow">↻</span></button>
       </div>
     </aside>
 
     <div class="page-shell">
       <header class="topbar">
-        <div class="mobile-wordmark"><span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span><b>MODEL SIGNAL</b></div>
-        <div class="location"><span class="location-pip"></span><span id="section-kicker">Signal desk / overview</span></div>
-        <div class="topbar-meta"><span id="last-update">Connecting to index</span><span class="topbar-divider"></span><span>UTC</span></div>
+        <div class="mobile-wordmark"><span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span><b>AI MODEL TRACKER</b></div>
+        <div class="location"><span id="section-kicker">Overview</span></div>
+        <div class="topbar-meta"><span id="last-update">Connecting…</span><span class="topbar-divider"></span><span>Updated automatically</span></div>
       </header>
 
       <main id="app-main" tabindex="-1"></main>
 
       <footer class="footer-bar">
-        <span>MODEL SIGNAL <b>///</b> PERSONAL INDEX</span>
-        <span>13 live sources <b>·</b> SQLite snapshots <b>·</b> EST error ±0.06</span>
+        <span>AI MODEL TRACKER</span>
+        <span>Performance, predictions, and price in one place.</span>
       </footer>
     </div>
   </div>
