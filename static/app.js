@@ -109,11 +109,38 @@ function renderLeaderboard() {
   const rows = sortedByQuality();
   return `<section class="page">
     <div class="page-head">
-      <h1>The best coding agents</h1>
-      <p>Ranked by coding score out of 100. ${state.coding.length} measured on the benchmark, ${state.est.length} predicted before testing.</p>
+      <h1>Complex tasks</h1>
+      <p>For agentic, multi-step coding work: long tasks, terminal use, repo-scale changes. Ranked by coding score out of 100. ${state.coding.length} measured, ${state.est.length} predicted.</p>
     </div>
     <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
     <div class="list">${rows.map((model, index) => rowHtml(model, index + 1)).join("")}</div>
+  </section>`;
+}
+
+function rowGenHtml(model, rank) {
+  const estimated = isEstimated(model);
+  const parts = String(model.name || "").split(" - ");
+  const harness = parts.length > 1 ? parts[0] : "";
+  const modelName = parts.length > 1 ? parts.slice(1).join(" - ") : String(model.name || "");
+  const harnessLabel = harness ? `<span class="harness">${esc(harness)}</span>` : "";
+  return `<article class="row row-gen ${estimated ? "est-row" : ""}">
+    <span class="rank">${rank}</span>
+    <div class="model"><strong>${esc(modelName)}</strong>${harnessLabel}${badges(model)}</div>
+    <div class="cell gen-cell"><b>${num(model.intelligence)}</b><small>general score</small></div>
+    <div class="cell"><b>${num(quality(model))}</b><small>${estimated ? "coding, predicted" : "coding score"}</small></div>
+    <div class="cell"><b>${money(model.price_mtok)}</b><small>per 1M tokens</small></div>
+  </article>`;
+}
+
+function renderGeneral() {
+  const rows = allModels().sort((a, b) => Number(b.intelligence || 0) - Number(a.intelligence || 0));
+  return `<section class="page">
+    <div class="page-head">
+      <h1>General work</h1>
+      <p>For everyday use: writing, reasoning, explaining, reviewing. Ranked by the general intelligence score. The coding column is there for reference.</p>
+    </div>
+    <div class="list-head list-head-gen"><span class="rank">#</span><span class="model">Model</span><span class="cell">General score</span><span class="cell">Coding score</span><span class="cell">$ / 1M tokens</span></div>
+    <div class="list">${rows.map((model, index) => rowGenHtml(model, index + 1)).join("")}</div>
   </section>`;
 }
 
@@ -161,7 +188,7 @@ function renderRadar() {
 }
 
 function render() {
-  const output = state.page === "value" ? renderValue() : state.page === "radar" ? renderRadar() : renderLeaderboard();
+  const output = state.page === "value" ? renderValue() : state.page === "radar" ? renderRadar() : state.page === "general" ? renderGeneral() : renderLeaderboard();
   $("#app").innerHTML = output;
   document.querySelectorAll(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.page === state.page));
   const slider = $("#balance");
