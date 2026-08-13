@@ -1,0 +1,35 @@
+name: Track AI Models
+
+on:
+  schedule:
+    - cron: "12,42 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: track
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Scrape, compute, publish
+        run: python -m model_tracker.cli publish
+      - name: Commit updates
+        run: |
+          git config user.name "model-tracker-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "update: $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "no changes"
+          git push

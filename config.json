@@ -1,0 +1,62 @@
+{
+  "db_path": "data/tracker.db",
+  "cache_dir": "data/cache",
+  "http": {
+    "timeout": 45,
+    "max_retries": 3,
+    "backoff_sec": 20,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+  },
+  "weights": {
+    "coding_agent": 0.35,
+    "intelligence": 0.25,
+    "code_correctness": 0.20,
+    "human_pref": 0.10,
+    "agentic": 0.10
+  },
+  "normalization": {
+    "mode": "minmax",
+    "minmax_floor": 0,
+    "minmax_ceiling": 100
+  },
+  "est": {
+    "band": 0.06,
+    "extrapolated_band": 0.10,
+    "cap": 0.75,
+    "agree_threshold": 0.03,
+    "int_slope": 0.01417,
+    "int_intercept": -0.2089,
+    "code_slope": 0.01206,
+    "code_intercept": -0.3022
+  },
+  "sources": {
+    "aa_coding":      { "enabled": true,  "interval_min": 35,  "category": "coding_agent", "change_threshold": 0.5 },
+    "aa_models":      { "enabled": true,  "interval_min": 35,  "category": "intelligence", "change_threshold": 0.2 },
+    "aa_changelog":   { "enabled": true,  "interval_min": 35,  "category": "signal" },
+    "lmarena":        { "enabled": true,  "interval_min": 720, "category": "human_pref", "change_threshold": 8 },
+    "livebench":      { "enabled": true,  "interval_min": 720, "category": "code_correctness", "change_threshold": 0.5 },
+    "swebench":       { "enabled": true,  "interval_min": 720, "category": "code_correctness", "change_threshold": 0.5 },
+    "aider":          { "enabled": true,  "interval_min": 720, "category": "code_correctness", "change_threshold": 0.5 },
+    "evalplus":       { "enabled": true,  "interval_min": 1440, "category": "code_correctness", "change_threshold": 0.5 },
+    "hf_openllm":     { "enabled": true,  "interval_min": 1440, "category": "intelligence", "change_threshold": 0.5 },
+    "openrouter":     { "enabled": true,  "interval_min": 720, "category": "market" },
+    "scale_seal":     { "enabled": false, "interval_min": 1440, "category": "agentic" },
+    "tbench":         { "enabled": true,  "interval_min": 1440, "category": "agentic", "change_threshold": 0.5 },
+    "deepswe":        { "enabled": true,  "interval_min": 1440, "category": "agentic", "change_threshold": 0.5 },
+    "gorilla":        { "enabled": true,  "interval_min": 1440, "category": "tool_use", "change_threshold": 0.5 }
+  },
+  "alerts": {
+    "desktop_toast": true,
+    "console_banner": true,
+    "webhook_url": null,
+    "max_consecutive_errors": 4
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8137
+  },
+  "snapshots_dir": "snapshots",
+  "site_dir": "site",
+  "known_underperform": ["GLM-5.2", "Kimi K2.6", "DeepSeek V4 Pro", "Gemini 3.6 Flash", "Opus 4.7"],
+  "known_overperform": ["Grok 4.5", "GPT-5.6"]
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Model Score Tracker</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>AI Model Score Tracker</h1>
+    <span class="subtitle">multi-source meta-score &middot; EST estimates for unbenchmarked models</span>
+  </div>
+  <div class="header-right">
+    <span id="last-update" class="muted"></span>
+    <button id="refresh-btn" title="force refresh all sources now">Refresh now</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-view="meta" class="active">Meta Ranking</button>
+  <button data-view="coding">Coding Leaderboard</button>
+  <button data-view="est">EST &middot; Unbenchmarked</button>
+  <button data-view="value">Value ($)</button>
+  <button data-view="changes">Change Log</button>
+  <button data-view="sources">Sources</button>
+</nav>
+
+<main>
+  <section id="view-meta" class="view active">
+    <p class="hint">Weighted composite: coding-agent 35% &middot; intelligence 25% &middot; code correctness 20% &middot; human preference 10% &middot; agentic 10%. Weights renormalized over available categories. Click headers to sort.</p>
+    <table id="tbl-meta"></table>
+  </section>
+  <section id="view-coding" class="view">
+    <p class="hint">Artificial Analysis Coding Agent Index (DeepSWE + Terminal-Bench v2 + SWE-Atlas-QnA), scaled 0-100.</p>
+    <table id="tbl-coding"></table>
+  </section>
+  <section id="view-est" class="view">
+    <p class="hint">Estimated coding-agent scores from the Intelligence Index regression (r=0.898). &plusmn;0.06 band, dual-regression agreement check, quirky-family warnings.</p>
+    <table id="tbl-est"></table>
+  </section>
+  <section id="view-value" class="view">
+    <p class="hint">Score per dollar: coding index / cost-per-task (measured) or per-Mtok blended price (estimated).</p>
+    <table id="tbl-value"></table>
+  </section>
+  <section id="view-changes" class="view">
+    <p class="hint">New / updated / removed entries across all sources, newest first.</p>
+    <table id="tbl-changes"></table>
+  </section>
+  <section id="view-sources" class="view">
+    <p class="hint">Source health: last snapshot, rows, error state. Scheduler pauses a source after 4 consecutive failures.</p>
+    <table id="tbl-sources"></table>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
