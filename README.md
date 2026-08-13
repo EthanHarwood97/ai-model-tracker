@@ -19,8 +19,8 @@ This repo is set up to run itself in the cloud — no local machine needed:
   scores, and commits:
   - `snapshots/<source>/<ts>.json` — full per-source history, written only
     when data actually changed (git-friendly, diffable)
-  - `site/` — static dashboard (same UI as local, loads `data.json`)
-- GitHub Pages serves `site/` from the `main` branch at
+  - `docs/` — static dashboard (same UI as local, loads `data.json`)
+- GitHub Pages serves `docs/` from the `main` branch at
   `https://<you>.github.io/ai-model-tracker/`.
 - Push notifications on NEW models: set `alerts.webhook_url` in `config.json`
   to an ntfy.sh topic URL (e.g. `https://ntfy.sh/your-random-topic`), then
