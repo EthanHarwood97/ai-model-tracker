@@ -106,7 +106,7 @@ function renderTier(kind) {
       <h1>${tier.title}</h1>
       <p>${tier.description} ${estimatedCount ? `${estimatedCount} predicted model${estimatedCount === 1 ? "" : "s"} included and marked.` : ""}</p>
     </div>
-    <div class="tier-summary"><b>${esc(tier.rule)}</b><span>Measured models use cost per task. Estimated models use their listed price per 1M tokens.</span></div>
+    <div class="tier-summary"><b>${esc(tier.rule)}</b><span>Task costs are scaled to current API pricing when a model's price changed since the last benchmark. Estimated models use their listed price per 1M tokens.</span></div>
     <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Score</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="cell">Time / task</span></div>
     <div class="list">${rows.length ? rows.map((model, index) => rowHtml(model, index + 1)).join("") : `<div class="empty-state">No models match this tier yet.</div>`}</div>
   </section>`;

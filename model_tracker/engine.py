@@ -100,15 +100,22 @@ class Engine:
         entities = compute_entities(coding_rows, model_rows, est_rows, attach, comps, self.cfg)
         market_rows = data.get("openrouter", [])
         for ent in entities:
+            aa_price = ent["price_mtok"]
             for m in market_rows:
                 if m.get("extra", {}).get("or_id") and canon(m["extra"]["or_id"]) == ent["plain"]:
                     p = m["extra"].get("price_blended")
                     if p is not None:
+                        ent["aa_price_mtok"] = aa_price
                         ent["price_mtok"] = p
                         ent["price_source"] = "openrouter"
                         ent.setdefault("detail", {})
                         ent["detail"]["price_input"] = m["extra"].get("price_prompt")
                         ent["detail"]["price_output"] = m["extra"].get("price_completion")
+                        if aa_price and aa_price > 0 and ent.get("cost_task"):
+                            ratio = p / aa_price
+                            if 0.2 <= ratio <= 5 and abs(ratio - 1) > 0.02:
+                                ent["cost_task"] = round(ent["cost_task"] * ratio, 4)
+                                ent["detail"]["cost_adjusted"] = round(ratio, 3)
                     break
         new_slugs = set()
         for ch in self.store.recent_changes(400):
