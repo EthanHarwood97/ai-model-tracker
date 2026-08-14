@@ -8,6 +8,7 @@ const state = {
   tier: "all",
   sort: "coding",
   status: "all",
+  mode: "coding",
   staticMode: false,
   expanded: new Set(),
 };
@@ -72,6 +73,7 @@ function filteredModels() {
     const query = state.query.toLowerCase();
     models = models.filter((model) => String(model.name || "").toLowerCase().includes(query));
   }
+  if (state.mode === "vision") models = models.filter((model) => model.vision !== null && model.vision !== undefined);
   if (state.tier !== "all") {
     models = models.filter((model) => {
       const cost = spend(model);
@@ -90,6 +92,7 @@ function filteredModels() {
       const valueB = (spend(b) ?? Infinity) ? quality(b) / (spend(b) ?? Infinity) : 0;
       return valueB - valueA;
     }
+    if (state.sort === "vision") return Number(b.vision || 0) - Number(a.vision || 0);
     return quality(b) - quality(a);
   });
   return models;
@@ -160,6 +163,8 @@ function detailHtml(model) {
     benchmarkRows.push({ label: "Coding", value: quality(model), note: kindOf(model) === "livebench" ? "LiveBench coding" : "predicted" });
   }
   if (model.intelligence !== null && model.intelligence !== undefined) benchmarkRows.push({ label: "General intelligence", value: model.intelligence, note: "AA Intelligence Index" });
+  if (model.vision_mmmu !== null && model.vision_mmmu !== undefined) benchmarkRows.push({ label: "Vision · MMMU-Pro", value: num(model.vision_mmmu, 1), note: "vision understanding benchmark" });
+  if (model.vision_arena !== null && model.vision_arena !== undefined) benchmarkRows.push({ label: "Vision arena", value: num(model.vision_arena, 1), note: "LMArena vision battles, normalized" });
   for (const [category, block] of Object.entries(components)) {
     if (category === "coding_agent" || category === "intelligence") continue;
     for (const source of block.sources || []) {
@@ -201,13 +206,19 @@ function rowHtml(model, rank) {
   const modelName = parts.length > 1 ? parts.slice(1).join(" - ") : String(model.name || "");
   const harnessLabel = harness ? `<span class="harness">${esc(harness)}</span>` : "";
   const expanded = state.expanded.has(model.slug);
-  const scoreNote = kind === "estimated" ? `predicted +/-${num((model.detail?.band ?? 0.06) * 100, 0)}` : kind === "livebench" ? "LiveBench coding" : "coding score";
+  const visionMode = state.mode === "vision";
+  const mainValue = visionMode ? model.vision : quality(model);
+  const mainNote = visionMode
+    ? `vision score${model.vision_mmmu !== null && model.vision_mmmu !== undefined ? ` · MMMU ${num(model.vision_mmmu)}` : ""}`
+    : kind === "estimated" ? `predicted +/-${num((model.detail?.band ?? 0.06) * 100, 0)}` : kind === "livebench" ? "LiveBench coding" : "coding score";
+  const secondaryValue = visionMode ? quality(model) : model.intelligence;
+  const secondaryNote = visionMode ? (kind === "estimated" ? "coding, predicted" : "coding score") : "general";
   return `<div class="mgroup">
     <article class="row ${kind === "estimated" ? "est-row" : ""} ${kind === "livebench" ? "lb-row" : ""} ${expanded ? "open" : ""}" data-slug="${esc(model.slug)}" tabindex="0" role="button" aria-expanded="${expanded}">
       <span class="rank">${rank}</span>
       <div class="model"><strong>${esc(modelName)}</strong>${harnessLabel}${badges(model)}</div>
-      <div class="cell score-cell"><b>${num(quality(model))}</b><small>${scoreNote}</small></div>
-      <div class="cell"><b>${num(model.intelligence)}</b><small>general</small></div>
+      <div class="cell score-cell"><b>${num(mainValue)}</b><small>${mainNote}</small></div>
+      <div class="cell"><b>${num(secondaryValue)}</b><small>${secondaryNote}</small></div>
       <div class="cell cell-task"><b>${money(model.cost_task)}</b><small>per task</small></div>
       <div class="cell cell-price"><b>${money(model.price_mtok)}</b><small>per 1M tokens</small></div>
       <div class="expand">${expanded ? "−" : "+"}</div>
@@ -219,11 +230,14 @@ function rowHtml(model, rank) {
 function controls() {
   const tierButton = (tier) => `<button class="filter-button ${state.tier === tier ? "active" : ""}" data-tier="${tier}">${TIER_NAMES[tier]}</button>`;
   const statusButton = (status, label) => `<button class="filter-button ${state.status === status ? "active" : ""}" data-status="${status}">${label}</button>`;
+  const modeButton = (mode, label) => `<button class="filter-button mode-button ${state.mode === mode ? "active" : ""}" data-mode="${mode}">${label}</button>`;
   return `<section class="controls">
     <label class="search-wrap"><span>&#128269;</span><input id="model-search" type="search" placeholder="Search any model" value="${esc(state.query)}" aria-label="Search models"></label>
+    <div class="filter-group" role="group" aria-label="Leaderboard">${modeButton("coding", "Coding")}${modeButton("vision", "Vision")}</div>
     <div class="filter-group" role="group" aria-label="Price tier">${tierButton("all")}${tierButton("budget")}${tierButton("workhorse")}${tierButton("frontier")}</div>
     <div class="filter-group" role="group" aria-label="Score type">${statusButton("all", "All")}${statusButton("measured", "Measured")}${statusButton("estimated", "Estimated")}${statusButton("livebench", "LiveBench")}</div>
     <select class="sort-select" id="sort-select" aria-label="Sort models">
+      ${state.mode === "vision" ? `<option value="vision" ${state.sort === "vision" ? "selected" : ""}>Sort: vision score</option>` : ""}
       <option value="coding" ${state.sort === "coding" ? "selected" : ""}>Sort: coding score</option>
       <option value="general" ${state.sort === "general" ? "selected" : ""}>Sort: general score</option>
       <option value="value" ${state.sort === "value" ? "selected" : ""}>Sort: best value</option>
@@ -234,16 +248,24 @@ function controls() {
 
 function render() {
   const rows = filteredModels();
+  const visionMode = state.mode === "vision";
+  const headTitle = visionMode ? "Pick the right model<br>for vision work." : "Pick the right model<br>for the job.";
+  const headText = visionMode
+    ? "Ranked by vision score: a blend of the MMMU-Pro benchmark and the vision arena Elo, with price beside every model. Coding scores stay visible for reference."
+    : "Every coding model we track, in one list. Filter by price, search any name, tap a row to see every benchmark, price, and caveat we have on it.";
+  const listHead = visionMode
+    ? `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Vision</span><span class="cell">Coding</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`
+    : `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Coding</span><span class="cell">General</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`;
   $("#app").innerHTML = `<section class="page">
     <div class="page-head">
-      <h1>Pick the right model<br>for the job.</h1>
-      <p>Every coding model we track, in one list. Filter by price, search any name, tap a row to see every benchmark, price, and caveat we have on it.</p>
+      <h1>${headTitle}</h1>
+      <p>${headText}</p>
     </div>
     ${picksBar()}
     ${controls()}
-    <div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Coding</span><span class="cell">General</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>
+    ${listHead}
     <div class="list">${rows.length ? rows.map((model, index) => rowHtml(model, index + 1)).join("") : `<div class="empty-state">No models match. Try a different search or filter.</div>`}</div>
-    <p class="radar-note">${rows.length} model${rows.length === 1 ? "" : "s"} shown. Estimated scores are predictions until a model appears on the coding-agent benchmark. LiveBench rows use that benchmark's coding score.</p>
+    <p class="radar-note">${rows.length} model${rows.length === 1 ? "" : "s"} shown. ${visionMode ? "Vision score = mean of MMMU-Pro and vision arena Elo where available." : "Estimated scores are predictions until a model appears on the coding-agent benchmark. LiveBench rows use that benchmark's coding score."}</p>
   </section>`;
   wireEvents();
 }
@@ -255,6 +277,11 @@ function wireEvents() {
   }
   document.querySelectorAll("[data-tier]").forEach((button) => button.addEventListener("click", () => { state.tier = button.dataset.tier; render(); }));
   document.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => { state.status = button.dataset.status; render(); }));
+  document.querySelectorAll("[data-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.mode = button.dataset.mode;
+    state.sort = state.mode === "vision" ? "vision" : "coding";
+    render();
+  }));
   const sort = $("#sort-select");
   if (sort) sort.addEventListener("change", (event) => { state.sort = event.target.value; render(); });
   document.querySelectorAll("[data-slug]").forEach((row) => {

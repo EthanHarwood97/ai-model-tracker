@@ -108,6 +108,8 @@ def compute_entities(coding_rows, model_rows, est_rows, pairs_attach, comps, cfg
             "model_name": attach.get("model_name"),
             "context_window": attach.get("context_window"),
             "output_speed": attach.get("output_speed"),
+            "mmmu_pro": attach.get("mmmu_pro"),
+            "accepts_image": attach.get("accepts_image"),
             "est_band": None,
             "est_detail": None,
             "detail": {},
@@ -131,6 +133,8 @@ def compute_entities(coding_rows, model_rows, est_rows, pairs_attach, comps, cfg
             "model_name": m["name"],
             "context_window": m["extra"].get("context_window"),
             "output_speed": m["extra"].get("output_speed"),
+            "mmmu_pro": m["extra"].get("mmmu_pro"),
+            "accepts_image": m["extra"].get("accepts_image"),
             "est_band": e["band"],
             "est_detail": e["detail"],
             "detail": e["detail"],
@@ -179,13 +183,22 @@ def compute_entities(coding_rows, model_rows, est_rows, pairs_attach, comps, cfg
             w_eff = weights["coding_agent"] / w_sum if w_sum else 1.0
         band = _band(meta, w_eff, coding_band, list(cat_vals.values())) if meta is not None else None
         ent["meta"] = round(meta, 2) if meta is not None else None
-        ent["meta_min"] = round(meta - band, 2) if meta is not None else None
-        ent["meta_max"] = round(meta + band, 2) if meta is not None else None
+        ent["meta_min"] = round(meta - band, 2) if meta is not None and band is not None else None
+        ent["meta_max"] = round(meta + band, 2) if meta is not None and band is not None else None
         ent["band"] = round(band, 3) if band is not None else None
         ent["n_sources"] = n_sources
         ent["source_names"] = sorted(src_set)
         ent["components"] = detail
         ent["categories"] = list(cat_vals.keys())
+        vision_parts = []
+        if ent["mmmu_pro"] is not None:
+            vision_parts.append(ent["mmmu_pro"])
+        vision_elos = [s["norm"] for s in node.get("human_pref", []) if str(s["kind"]).startswith("arena_vision")]
+        if vision_elos:
+            vision_parts.append(statistics.mean(vision_elos))
+        ent["vision_mmmu"] = ent["mmmu_pro"]
+        ent["vision_arena"] = round(statistics.mean(vision_elos), 1) if vision_elos else None
+        ent["vision"] = round(statistics.mean(vision_parts), 1) if vision_parts else None
 
     return entities
 

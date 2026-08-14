@@ -87,6 +87,7 @@ main { margin: 0 auto; max-width: 1120px; padding: clamp(26px, 5vw, 56px) clamp(
 }
 .filter-button:hover { background: var(--bg); color: var(--ink); }
 .filter-button.active { background: var(--green-soft); color: var(--green); font-weight: 650; }
+.mode-button.active { background: var(--violet-soft); color: var(--violet); }
 .sort-select { background: var(--bg); border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 12px; padding: 8px 9px; }
 
 .list-head {

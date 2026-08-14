@@ -199,5 +199,7 @@ def attach_model_to_coding(pairs):
             "release_date": m["extra"].get("release_date"),
             "context_window": m["extra"].get("context_window"),
             "output_speed": m["extra"].get("output_speed"),
+            "mmmu_pro": m["extra"].get("mmmu_pro"),
+            "accepts_image": m["extra"].get("accepts_image"),
         }
     return out

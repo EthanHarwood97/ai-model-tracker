@@ -76,6 +76,8 @@ def scrape_coding(html):
             continue
         seen.add(raw_label)
         info = parse_coding_label(raw_label)
+        cost = _grab_num(window, "costUsd")
+        wall = _grab_num(window, "agentWallTimeSec")
         rows.append({
             "kind": "coding_index",
             "name": raw_label,
@@ -87,8 +89,8 @@ def scrape_coding(html):
                 "effort": info["effort"],
                 "with_fallback": info["with_fallback"],
                 "index_raw": round(score, 4),
-                "cost_usd": round(_grab_num(window, "costUsd"), 4) if _grab_num(window, "costUsd") is not None else None,
-                "wall_time_s": round(_grab_num(window, "agentWallTimeSec"), 1) if _grab_num(window, "agentWallTimeSec") is not None else None,
+                "cost_usd": round(cost, 4) if cost is not None else None,
+                "wall_time_s": round(wall, 1) if wall is not None else None,
             },
         })
     return rows
@@ -105,13 +107,18 @@ def _coding_slug(info):
     return slug or None
 
 
+def _grab_round(window, key, digits):
+    value = _grab_num(window, key)
+    return round(value, digits) if value is not None else None
+
+
 def scrape_models(html):
     text = _unescape_jsonish(html)
     rows = []
     seen = {}
     for m in re.finditer(r'"name":"((?:[^"\\]|\\.)*)"', text):
         name = _json_str(m.group(1))
-        window = text[m.end(): m.end() + 2600]
+        window = text[m.end(): m.end() + 3200]
         slug = _grab_str(window, "slug")
         iq = _grab_num(window, "intelligenceIndex")
         if slug is None or iq is None:
@@ -120,6 +127,7 @@ def scrape_models(html):
         if key in seen:
             continue
         seen[key] = True
+        mmmu = _grab_num(window, "mmmuPro")
         rows.append({
             "kind": "intelligence",
             "name": name,
@@ -127,15 +135,17 @@ def scrape_models(html):
             "score": round(iq, 4),
             "extra": {
                 "intelligence_estimated": _grab_bool(window, "intelligenceIndexIsEstimated"),
-                "coding_index": round(_grab_num(window, "codingIndex"), 4) if _grab_num(window, "codingIndex") is not None else None,
-                "price_1m_blended": round(_grab_num(window, "price1mBlended0To3To1"), 4) if _grab_num(window, "price1mBlended0To3To1") is not None else None,
-                "price_1m_input": round(_grab_num(window, "price1mInputTokens"), 4) if _grab_num(window, "price1mInputTokens") is not None else None,
-                "price_1m_output": round(_grab_num(window, "price1mOutputTokens"), 4) if _grab_num(window, "price1mOutputTokens") is not None else None,
+                "coding_index": _grab_round(window, "codingIndex", 4),
+                "price_1m_blended": _grab_round(window, "price1mBlended0To3To1", 4),
+                "price_1m_input": _grab_round(window, "price1mInputTokens", 4),
+                "price_1m_output": _grab_round(window, "price1mOutputTokens", 4),
                 "release_date": _grab_str(window, "releaseDate"),
                 "is_reasoning": _grab_bool(window, "isReasoning"),
                 "deprecated": _grab_bool(window, "deprecated"),
                 "context_window": _grab_num(window, "contextWindowTokens"),
-                "output_speed": round(_grab_num(window, "medianOutputTokensPerSecond"), 1) if _grab_num(window, "medianOutputTokensPerSecond") is not None else None,
+                "output_speed": _grab_round(window, "medianOutputTokensPerSecond", 1),
+                "mmmu_pro": round(mmmu * 100, 2) if mmmu is not None else None,
+                "accepts_image": _grab_bool(window, "inputModalityImage"),
             },
         })
     return rows
