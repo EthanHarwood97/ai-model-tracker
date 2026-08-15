@@ -93,6 +93,7 @@ function filteredModels() {
       return valueB - valueA;
     }
     if (state.sort === "vision") return Number(b.vision || 0) - Number(a.vision || 0);
+    if (state.sort === "speed") return Number(b.speed || 0) - Number(a.speed || 0);
     return quality(b) - quality(a);
   });
   return models;
@@ -188,6 +189,8 @@ function detailHtml(model) {
         <div class="spec-grid">
           <div class="spec-row"><span>Context window</span><b>${model.context_window ? `${Math.round(model.context_window / 1000)}k tokens` : "—"}</b></div>
           <div class="spec-row"><span>Output speed</span><b>${model.output_speed ? `${num(model.output_speed, 0)} tok/s` : "—"}</b></div>
+          <div class="spec-row"><span>First answer</span><b>${model.time_to_first_answer !== null && model.time_to_first_answer !== undefined ? `${num(model.time_to_first_answer, 1)}s` : "—"}</b></div>
+          <div class="spec-row"><span>Speed score</span><b>${model.speed !== null && model.speed !== undefined ? num(model.speed, 0) : "—"}</b></div>
           <div class="spec-row"><span>Time per task</span><b>${minutes(model.wall_time_s)}</b></div>
           <div class="spec-row"><span>Cost per task</span><b>${money(model.cost_task)}</b>${adjusted}</div>
           <div class="spec-row"><span>Price per 1M tokens</span><b>${money(model.price_mtok)}</b></div>
@@ -211,8 +214,10 @@ function rowHtml(model, rank) {
   const mainNote = visionMode
     ? `vision score${model.vision_mmmu !== null && model.vision_mmmu !== undefined ? ` · MMMU ${num(model.vision_mmmu)}` : ""}`
     : kind === "estimated" ? `predicted +/-${num((model.detail?.band ?? 0.06) * 100, 0)}` : kind === "livebench" ? "LiveBench coding" : "coding score";
-  const secondaryValue = visionMode ? quality(model) : model.intelligence;
-  const secondaryNote = visionMode ? (kind === "estimated" ? "coding, predicted" : "coding score") : "general";
+  const secondaryValue = visionMode ? model.speed : model.intelligence;
+  const secondaryNote = visionMode
+    ? model.time_to_first_answer !== null && model.time_to_first_answer !== undefined ? `first answer ${num(model.time_to_first_answer, 1)}s` : "speed score"
+    : "general";
   return `<div class="mgroup">
     <article class="row ${kind === "estimated" ? "est-row" : ""} ${kind === "livebench" ? "lb-row" : ""} ${expanded ? "open" : ""}" data-slug="${esc(model.slug)}" tabindex="0" role="button" aria-expanded="${expanded}">
       <span class="rank">${rank}</span>
@@ -237,7 +242,7 @@ function controls() {
     <div class="filter-group" role="group" aria-label="Price tier">${tierButton("all")}${tierButton("budget")}${tierButton("workhorse")}${tierButton("frontier")}</div>
     <div class="filter-group" role="group" aria-label="Score type">${statusButton("all", "All")}${statusButton("measured", "Measured")}${statusButton("estimated", "Estimated")}${statusButton("livebench", "LiveBench")}</div>
     <select class="sort-select" id="sort-select" aria-label="Sort models">
-      ${state.mode === "vision" ? `<option value="vision" ${state.sort === "vision" ? "selected" : ""}>Sort: vision score</option>` : ""}
+      ${state.mode === "vision" ? `<option value="vision" ${state.sort === "vision" ? "selected" : ""}>Sort: vision score</option><option value="speed" ${state.sort === "speed" ? "selected" : ""}>Sort: fastest response</option>` : ""}
       <option value="coding" ${state.sort === "coding" ? "selected" : ""}>Sort: coding score</option>
       <option value="general" ${state.sort === "general" ? "selected" : ""}>Sort: general score</option>
       <option value="value" ${state.sort === "value" ? "selected" : ""}>Sort: best value</option>
@@ -251,10 +256,10 @@ function render() {
   const visionMode = state.mode === "vision";
   const headTitle = visionMode ? "Pick the right model<br>for vision work." : "Pick the right model<br>for the job.";
   const headText = visionMode
-    ? "Ranked by vision score: a blend of the MMMU-Pro benchmark and the vision arena Elo, with price beside every model. Coding scores stay visible for reference."
+    ? "Ranked by vision score: MMMU-Pro plus vision arena Elo. Speed shows how fast a model starts answering and how fast it streams — with price beside every model."
     : "Every coding model we track, in one list. Filter by price, search any name, tap a row to see every benchmark, price, and caveat we have on it.";
   const listHead = visionMode
-    ? `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Vision</span><span class="cell">Coding</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`
+    ? `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Vision</span><span class="cell">Speed</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`
     : `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Coding</span><span class="cell">General</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`;
   $("#app").innerHTML = `<section class="page">
     <div class="page-head">

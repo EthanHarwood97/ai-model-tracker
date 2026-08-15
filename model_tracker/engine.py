@@ -45,13 +45,10 @@ class Engine:
             raise
 
     def _webhook(self, url, new_events):
-        import json as _json
-
         import httpx
         message = " | ".join(c["name"] for c in new_events[:10])
         try:
-            httpx.post(url, timeout=10, data=_json.dumps({"title": "New AI models detected", "message": message}),
-                       headers={"Content-Type": "application/json"})
+            httpx.post(url, timeout=10, json={"title": "New AI models detected", "message": message})
         except Exception:
             pass
 
@@ -162,6 +159,28 @@ class Engine:
                         ent["detail"]["price_output"] = m["extra"].get("price_completion")
                     break
             entities.append(ent)
+        ttft_all = [ent.get("time_to_first_answer") for ent in entities]
+        speed_all = [ent.get("output_speed") for ent in entities]
+
+        def _speed_norm(values, value, lower_better):
+            xs = [v for v in values if v is not None]
+            if not xs or value is None:
+                return None
+            mn, mx = min(xs), max(xs)
+            if mx == mn:
+                return 50.0
+            ratio = (value - mn) / (mx - mn)
+            return (1 - ratio) * 100 if lower_better else ratio * 100
+
+        for ent in entities:
+            parts = []
+            n_ttft = _speed_norm(ttft_all, ent.get("time_to_first_answer"), True)
+            n_speed = _speed_norm(speed_all, ent.get("output_speed"), False)
+            if n_ttft is not None:
+                parts.append(n_ttft)
+            if n_speed is not None:
+                parts.append(n_speed)
+            ent["speed"] = round(sum(parts) / len(parts), 1) if parts else None
         new_slugs = set()
         for ch in self.store.recent_changes(400):
             if ch["event"] == "new" and ch["slug"]:

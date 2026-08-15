@@ -144,6 +144,7 @@ def scrape_models(html):
                 "deprecated": _grab_bool(window, "deprecated"),
                 "context_window": _grab_num(window, "contextWindowTokens"),
                 "output_speed": _grab_round(window, "medianOutputTokensPerSecond", 1),
+                "time_to_first_answer": _grab_round(window, "medianTimeToFirstAnswerTokenSeconds", 2),
                 "mmmu_pro": round(mmmu * 100, 2) if mmmu is not None else None,
                 "accepts_image": _grab_bool(window, "inputModalityImage"),
             },
