@@ -7,10 +7,22 @@ const state = {
   query: "",
   tier: "all",
   sort: "coding",
+  sortDir: 1,
   status: "all",
   mode: "coding",
   staticMode: false,
   expanded: new Set(),
+};
+
+const SORT_META = {
+  coding: { natural: -1 },
+  general: { natural: -1 },
+  vision: { natural: -1 },
+  speed: { natural: -1 },
+  value: { natural: -1 },
+  price: { natural: 1 },
+  priceM: { natural: 1 },
+  name: { natural: 1 },
 };
 
 const TIER_NAMES = {
@@ -85,16 +97,19 @@ function filteredModels() {
   }
   if (state.status !== "all") models = models.filter((model) => kindOf(model) === state.status);
   models.sort((a, b) => {
-    if (state.sort === "general") return Number(b.intelligence || 0) - Number(a.intelligence || 0);
-    if (state.sort === "price") return (spend(a) ?? Infinity) - (spend(b) ?? Infinity);
-    if (state.sort === "value") {
+    let result = 0;
+    if (state.sort === "general") result = Number(b.intelligence || 0) - Number(a.intelligence || 0);
+    else if (state.sort === "price") result = (spend(a) ?? Infinity) - (spend(b) ?? Infinity);
+    else if (state.sort === "priceM") result = (a.price_mtok ?? Infinity) - (b.price_mtok ?? Infinity);
+    else if (state.sort === "name") result = String(a.name).localeCompare(String(b.name));
+    else if (state.sort === "value") {
       const valueA = (spend(a) ?? Infinity) ? quality(a) / (spend(a) ?? Infinity) : 0;
       const valueB = (spend(b) ?? Infinity) ? quality(b) / (spend(b) ?? Infinity) : 0;
-      return valueB - valueA;
-    }
-    if (state.sort === "vision") return Number(b.vision || 0) - Number(a.vision || 0);
-    if (state.sort === "speed") return Number(b.speed || 0) - Number(a.speed || 0);
-    return quality(b) - quality(a);
+      result = valueB - valueA;
+    } else if (state.sort === "vision") result = Number(b.vision || 0) - Number(a.vision || 0);
+    else if (state.sort === "speed") result = Number(b.speed || 0) - Number(a.speed || 0);
+    else result = quality(b) - quality(a);
+    return result * state.sortDir;
   });
   return models;
 }
@@ -232,6 +247,14 @@ function rowHtml(model, rank) {
   </div>`;
 }
 
+function headCell(key, label) {
+  const active = state.sort === key;
+  const actualDir = active ? state.sortDir * (SORT_META[key]?.natural ?? -1) : null;
+  const arrow = actualDir === 1 ? " &#9650;" : actualDir === -1 ? " &#9660;" : "";
+  const ariaSort = actualDir === 1 ? "ascending" : actualDir === -1 ? "descending" : "none";
+  return `<button class="head-cell ${active ? "active" : ""}" data-sort-key="${key}" aria-sort="${ariaSort}" title="Click to sort">${label}${arrow}</button>`;
+}
+
 function controls() {
   const tierButton = (tier) => `<button class="filter-button ${state.tier === tier ? "active" : ""}" data-tier="${tier}">${TIER_NAMES[tier]}</button>`;
   const statusButton = (status, label) => `<button class="filter-button ${state.status === status ? "active" : ""}" data-status="${status}">${label}</button>`;
@@ -247,6 +270,8 @@ function controls() {
       <option value="general" ${state.sort === "general" ? "selected" : ""}>Sort: general score</option>
       <option value="value" ${state.sort === "value" ? "selected" : ""}>Sort: best value</option>
       <option value="price" ${state.sort === "price" ? "selected" : ""}>Sort: cheapest first</option>
+      <option value="priceM" ${state.sort === "priceM" ? "selected" : ""}>Sort: token price</option>
+      <option value="name" ${state.sort === "name" ? "selected" : ""}>Sort: name A-Z</option>
     </select>
   </section>`;
 }
@@ -259,8 +284,8 @@ function render() {
     ? "Ranked by vision score: MMMU-Pro plus vision arena Elo. Speed shows how fast a model starts answering and how fast it streams — with price beside every model."
     : "Every coding model we track, in one list. Filter by price, search any name, tap a row to see every benchmark, price, and caveat we have on it.";
   const listHead = visionMode
-    ? `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Vision</span><span class="cell">Speed</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`
-    : `<div class="list-head"><span class="rank">#</span><span class="model">Model</span><span class="cell">Coding</span><span class="cell">General</span><span class="cell">Cost / task</span><span class="cell">$ / 1M tokens</span><span class="expand-head"></span></div>`;
+    ? `<div class="list-head"><span class="rank">#</span>${headCell("name", "Model")}${headCell("vision", "Vision")}${headCell("speed", "Speed")}${headCell("price", "Cost / task")}${headCell("priceM", "$ / 1M tokens")}<span class="expand-head"></span></div>`
+    : `<div class="list-head"><span class="rank">#</span>${headCell("name", "Model")}${headCell("coding", "Coding")}${headCell("general", "General")}${headCell("price", "Cost / task")}${headCell("priceM", "$ / 1M tokens")}<span class="expand-head"></span></div>`;
   $("#app").innerHTML = `<section class="page">
     <div class="page-head">
       <h1>${headTitle}</h1>
@@ -288,7 +313,13 @@ function wireEvents() {
     render();
   }));
   const sort = $("#sort-select");
-  if (sort) sort.addEventListener("change", (event) => { state.sort = event.target.value; render(); });
+  if (sort) sort.addEventListener("change", (event) => { state.sort = event.target.value; state.sortDir = 1; render(); });
+  document.querySelectorAll("[data-sort-key]").forEach((head) => head.addEventListener("click", () => {
+    const key = head.dataset.sortKey;
+    if (state.sort === key) state.sortDir *= -1;
+    else { state.sort = key; state.sortDir = 1; }
+    render();
+  }));
   document.querySelectorAll("[data-slug]").forEach((row) => {
     row.addEventListener("click", () => {
       const slug = row.dataset.slug;

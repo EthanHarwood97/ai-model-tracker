@@ -99,9 +99,23 @@ main { margin: 0 auto; max-width: 1120px; padding: clamp(26px, 5vw, 56px) clamp(
   gap: 14px;
   grid-template-columns: 30px minmax(0, 1fr) 84px 84px 92px 96px 26px;
   letter-spacing: .08em;
-  padding: 8px 14px;
+  padding: 4px 14px;
   text-transform: uppercase;
 }
+.head-cell {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 8px 0;
+  text-align: left;
+  text-transform: inherit;
+  white-space: nowrap;
+}
+.head-cell:hover { color: var(--ink); }
+.head-cell.active { color: var(--green); font-weight: 700; }
 .list { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
 .mgroup + .mgroup { border-top: 1px solid #edf0eb; }
 .row {
