@@ -1,4 +1,5 @@
 import re
+from html import unescape
 
 PAGE = "https://api-docs.deepseek.com/quick_start/pricing"
 
@@ -12,48 +13,30 @@ _PEAK = "peak"
 
 
 def _usd(cell):
-    m = re.search(r"\$(\d+(?:\.\d+)?)", cell)
+    m = re.search(r"\$?(\d+(?:\.\d+)?)", cell)
     return round(float(m.group(1)), 4) if m else None
 
 
 def _parse_table(html):
-    table = next(
-        (
-            table
-            for table in re.findall(r"<table\b[^>]*>.*?</table>", html, re.I | re.S)
-            if re.search(r"1M\s+INPUT\s+TOKENS", table, re.I)
-            and re.search(r"OFF-PEAK", table, re.I)
-        ),
-        None,
-    )
-    if table is None:
-        raise ValueError("pricing table not found")
+    text = unescape(re.sub(r"<[^>]+>", " ", html))
+    text = re.sub(r"\s+", " ", text).strip()
     data = {}
-    current = None
-    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.I | re.S):
-        cells = [
-            re.sub(r"<[^>]+>", "", c).strip()
-            for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.I | re.S)
-        ]
-        if not cells:
+    labels = {
+        "cache_hit": r"1M\s+INPUT\s+TOKENS\s+\(\s*CACHE\s+HIT\s*\)",
+        "cache_miss": r"1M\s+INPUT\s+TOKENS\s+\(\s*CACHE\s+MISS\s*\)",
+        "output": r"1M\s+OUTPUT\s+TOKENS",
+    }
+    tiered_prices = r"OFF[\s-]+PEAK\s+\$([\d.]+)\s+\$([\d.]+)\s+PEAK\s+\$([\d.]+)\s+\$([\d.]+)"
+    for metric, label in labels.items():
+        match = re.search(rf"{label}\s+{tiered_prices}", text, re.I)
+        if not match:
             continue
-        label_idx = next(
-            (
-                n
-                for n, c in enumerate(cells)
-                if re.search(r"TOKENS", c, re.I) and any("$" in x for x in cells)
-            ),
-            None,
-        )
-        if label_idx is not None:
-            current = cells[label_idx]
-            cells = cells[label_idx + 1:]
-        if not current or not cells or cells[0].upper() not in ("OFF-PEAK", "PEAK"):
-            continue
-        tier = _OFFPEAK if cells[0].upper() == "OFF-PEAK" else _PEAK
-        m = re.search(r"\((.*?)\)", current)
-        metric = (m.group(1) if m else "output").lower().replace(" ", "_").replace("-", "_")
-        data.setdefault(metric, {})[tier] = (_usd(cells[1]), _usd(cells[2]))
+        data[metric] = {
+            _OFFPEAK: (_usd(match.group(1)), _usd(match.group(2))),
+            _PEAK: (_usd(match.group(3)), _usd(match.group(4))),
+        }
+    if set(data) != set(labels):
+        raise ValueError("pricing table not found")
     return data
 
 
