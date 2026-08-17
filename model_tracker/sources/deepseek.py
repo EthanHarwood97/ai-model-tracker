@@ -64,15 +64,18 @@ def _parse_table(html):
 def fetch(f):
     data = None
     last_err = None
+    snippet = ""
     for ttl, force in ((43200, False), (0, True)):
         try:
             r = f.get(PAGE, ttl=ttl, force=force)
+            snippet = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text))[:160]
             data = _parse_table(r.text)
             break
         except Exception as e:
             last_err = e
     if not data:
-        raise ValueError(f"pricing table not found ({last_err})")
+        detail = "zh-CN variant served" if "缓存" in snippet or "百万tokens" in snippet else repr(snippet)
+        raise ValueError(f"pricing table not found ({last_err}) [{detail}]")
     rows = []
     for or_id, (flavor, version) in MODEL_VERSIONS.items():
         idx = 0 if flavor == "flash" else 1
