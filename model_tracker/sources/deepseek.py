@@ -17,20 +17,34 @@ def _usd(cell):
 
 
 def _parse_table(html):
-    i = html.find("PRICING")
-    if i < 0:
-        raise ValueError("pricing table not found")
-    start = html.rfind("<table", 0, i)
-    end = html.find("</table>", i)
-    if start < 0 or end < 0:
+    table = next(
+        (
+            table
+            for table in re.findall(r"<table\b[^>]*>.*?</table>", html, re.I | re.S)
+            if re.search(r"1M\s+INPUT\s+TOKENS", table, re.I)
+            and re.search(r"OFF-PEAK", table, re.I)
+        ),
+        None,
+    )
+    if table is None:
         raise ValueError("pricing table not found")
     data = {}
     current = None
-    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html[start:end], re.S):
-        cells = [re.sub(r"<[^>]+>", "", c).strip() for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.I | re.S):
+        cells = [
+            re.sub(r"<[^>]+>", "", c).strip()
+            for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.I | re.S)
+        ]
         if not cells:
             continue
-        label_idx = next((n for n, c in enumerate(cells) if "TOKENS" in c and any("$" in x for x in cells)), None)
+        label_idx = next(
+            (
+                n
+                for n, c in enumerate(cells)
+                if re.search(r"TOKENS", c, re.I) and any("$" in x for x in cells)
+            ),
+            None,
+        )
         if label_idx is not None:
             current = cells[label_idx]
             cells = cells[label_idx + 1:]
