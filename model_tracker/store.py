@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS scores(
   meta_min REAL,
   meta_max REAL,
   measured INTEGER,
+  measurement_type TEXT,
+  score_source TEXT,
+  aa_model_coding_index REAL,
+  coverage REAL,
   n_sources INTEGER,
   components TEXT,
   coding_index REAL,
@@ -66,8 +70,14 @@ CREATE TABLE IF NOT EXISTS scores(
   vision REAL,
   vision_mmmu REAL,
   vision_arena REAL,
+  vision_frontend REAL,
   speed REAL,
   time_to_first_answer REAL,
+  supports_tools INTEGER,
+  accepts_image INTEGER,
+  deprecated INTEGER,
+  cost_basis TEXT,
+  price_source TEXT,
   is_new INTEGER DEFAULT 0,
   detail TEXT
 );
@@ -83,7 +93,27 @@ class Store:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
-        for column, kind in (("harness", "TEXT"), ("wall_time_s", "REAL"), ("context_window", "REAL"), ("output_speed", "REAL"), ("vision", "REAL"), ("vision_mmmu", "REAL"), ("vision_arena", "REAL"), ("speed", "REAL"), ("time_to_first_answer", "REAL")):
+        for column, kind in (
+            ("harness", "TEXT"),
+            ("wall_time_s", "REAL"),
+            ("context_window", "REAL"),
+            ("output_speed", "REAL"),
+            ("vision", "REAL"),
+            ("vision_mmmu", "REAL"),
+            ("vision_arena", "REAL"),
+            ("vision_frontend", "REAL"),
+            ("speed", "REAL"),
+            ("time_to_first_answer", "REAL"),
+            ("measurement_type", "TEXT"),
+            ("score_source", "TEXT"),
+            ("aa_model_coding_index", "REAL"),
+            ("coverage", "REAL"),
+            ("supports_tools", "INTEGER"),
+            ("accepts_image", "INTEGER"),
+            ("deprecated", "INTEGER"),
+            ("cost_basis", "TEXT"),
+            ("price_source", "TEXT"),
+        ):
             try:
                 self.conn.execute(f"ALTER TABLE scores ADD COLUMN {column} {kind}")
             except sqlite3.OperationalError:
@@ -147,7 +177,9 @@ class Store:
     def row_map(self, snapshot_id):
         out = {}
         for r in self.rows_for(snapshot_id):
-            key = r["slug"] or r["name"]
+            # A model can legitimately have multiple benchmark kinds in one
+            # snapshot, so kind must be part of the change-detection identity.
+            key = (r["kind"], r["slug"] or r["name"])
             out.setdefault(key, []).append(r)
         return out
 
@@ -158,17 +190,17 @@ class Store:
         for key in new_map:
             if key not in old_map:
                 r = new_map[key][0]
-                changes.append(dict(source=source, kind=r["kind"], slug=key, name=r["name"], event="new",
+                changes.append(dict(source=source, kind=r["kind"], slug=r["slug"] or r["name"], name=r["name"], event="new",
                                     detail=f"first seen in {source}/{r['kind']}"))
             else:
                 o, n = old_map[key][0], new_map[key][0]
                 if o["score"] is not None and n["score"] is not None and abs(n["score"] - o["score"]) >= threshold:
-                    changes.append(dict(source=source, kind=n["kind"], slug=key, name=n["name"], event="updated",
+                    changes.append(dict(source=source, kind=n["kind"], slug=n["slug"] or n["name"], name=n["name"], event="updated",
                                         detail=f"{o['score']:.3f} -> {n['score']:.3f}"))
         for key in old_map:
             if key not in new_map:
                 r = old_map[key][0]
-                changes.append(dict(source=source, kind=r["kind"], slug=key, name=r["name"], event="removed",
+                changes.append(dict(source=source, kind=r["kind"], slug=r["slug"] or r["name"], name=r["name"], event="removed",
                                     detail=f"gone from {source}/{r['kind']}"))
         return changes
 
@@ -192,25 +224,35 @@ class Store:
             ts = utcnow()
             self.conn.execute("DELETE FROM scores")
             payload = []
+
+            def tri_state(value):
+                return None if value is None else (1 if value else 0)
+
             for s in score_rows:
                 payload.append((
                     ts, s["slug"], s["name"], s["meta"], s.get("meta_min"), s.get("meta_max"),
-                    1 if s.get("measured") else 0, s.get("n_sources", 0),
+                    1 if s.get("measured") else 0, s.get("measurement_type"), s.get("score_source"),
+                    s.get("aa_model_coding_index"), s.get("coverage"), s.get("n_sources", 0),
                     json.dumps(s.get("components", {}), ensure_ascii=False),
                     s.get("coding_index"), s.get("intelligence"),
                     s.get("price_mtok"), s.get("cost_task"),
                     s.get("harness"), s.get("wall_time_s"),
                     s.get("context_window"), s.get("output_speed"),
                     s.get("vision"), s.get("vision_mmmu"), s.get("vision_arena"),
+                    s.get("vision_frontend"),
                     s.get("speed"), s.get("time_to_first_answer"),
+                    tri_state(s.get("supports_tools")), tri_state(s.get("accepts_image")),
+                    tri_state(s.get("deprecated")), s.get("cost_basis"), s.get("price_source"),
                     1 if s.get("is_new") else 0,
                     json.dumps(s.get("detail", {}), ensure_ascii=False),
                 ))
             self.conn.executemany(
-                "INSERT INTO scores(ts, slug, name, meta, meta_min, meta_max, measured, n_sources, components,"
+                "INSERT INTO scores(ts, slug, name, meta, meta_min, meta_max, measured, measurement_type, score_source,"
+                " aa_model_coding_index, coverage, n_sources, components,"
                 " coding_index, intelligence, price_mtok, cost_task, harness, wall_time_s, context_window, output_speed,"
-                " vision, vision_mmmu, vision_arena, speed, time_to_first_answer, is_new, detail)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " vision, vision_mmmu, vision_arena, vision_frontend, speed, time_to_first_answer, supports_tools, accepts_image,"
+                " deprecated, cost_basis, price_source, is_new, detail)"
+                " VALUES (" + ",".join("?" for _ in range(34)) + ")",
                 payload,
             )
             self.conn.commit()
@@ -227,9 +269,29 @@ class Store:
             "SELECT * FROM changes ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
 
     def source_status(self):
-        return [dict(r) for r in self.conn.execute(
-            "SELECT source, MAX(ts) AS last_ok, SUM(ok) AS ok_count, COUNT(*) AS total FROM snapshots GROUP BY source"
-        ).fetchall()]
+        rows = self.conn.execute(
+            "SELECT source, MAX(CASE WHEN ok=1 THEN ts END) AS last_ok, MAX(ts) AS last_run, "
+            "SUM(ok) AS ok_count, COUNT(*) AS total, "
+            "(SELECT latest.ok FROM snapshots AS latest WHERE latest.source=s.source ORDER BY latest.id DESC LIMIT 1) AS latest_ok, "
+            "(SELECT latest.row_count FROM snapshots AS latest WHERE latest.source=s.source ORDER BY latest.id DESC LIMIT 1) AS row_count, "
+            "(SELECT latest.error FROM snapshots AS latest WHERE latest.source=s.source ORDER BY latest.id DESC LIMIT 1) AS last_error "
+            "FROM snapshots AS s GROUP BY source"
+        ).fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            recent = self.conn.execute(
+                "SELECT ok FROM snapshots WHERE source=? ORDER BY id DESC LIMIT 32",
+                (item["source"],),
+            ).fetchall()
+            consecutive = 0
+            for snapshot in recent:
+                if snapshot[0]:
+                    break
+                consecutive += 1
+            item["consecutive_errors"] = consecutive
+            out.append(item)
+        return out
 
     def unseen_new_slugs(self, source=None):
         q = "SELECT DISTINCT slug FROM changes WHERE event='new'"

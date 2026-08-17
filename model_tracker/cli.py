@@ -56,10 +56,10 @@ def print_summary(entities):
     print("\n=== EST TOP 10 ===")
     for e in est[:10]:
         d = e.get("detail") or {}
-        band = d.get("band") or e.get("band") or 0.06
+        band = d.get("band_points") or e.get("band") or 0.0
         price = f"${e['price_mtok']:.2f}" if e.get("price_mtok") is not None else "n/a"
         extra = " extrapolated" if d.get("extrapolated") else ""
-        print(f"  {e['coding_index']:6.2f} +/-{band:.2f}  {e['name'][:45]:45}  {price}/Mtok{extra}")
+        print(f"  {e['coding_index'] or 0:6.2f} +/-{band:.1f}  {e['name'][:45]:45}  {price}/Mtok{extra}")
 
 
 def cmd_serve(args):
@@ -98,13 +98,26 @@ def cmd_publish(args):
     engine = Engine(cfg, store, fetcher)
     imported = import_history(store, snaps_dir)
     results, errors, entities = engine.cycle(force=True)
+    fatal = [
+        name for name in errors
+        if cfg.get("sources", {}).get(name, {}).get("required", False)
+        and not store.snapshots_for(name, 1)
+    ]
+    if fatal:
+        for name in fatal:
+            print(f"  REQUIRED SOURCE UNAVAILABLE: {name}")
+        raise SystemExit(1)
     written = export_snapshots(store, snaps_dir)
     payload = build_site(engine, site_dir)
     print(f"imported {imported} snapshots, sources ok={len(results)} failed={len(errors)}")
     for name, err in errors.items():
         print(f"  FAILED {name}: {err}")
     print(f"exported {written} new snapshot files, entities={len(entities)}")
-    print(f"site: {len(payload['meta'])} meta / {len(payload['coding'])} coding / {len(payload['est'])} est / {len(payload['value'])} value rows")
+    recs = payload.get("recommendations", {})
+    print(f"site: {len(payload['meta'])} meta / {len(payload['coding'])} coding / {len(payload['est'])} est / {len(payload['models'])} models")
+    for role, result in recs.items():
+        pick = result.get("recommended") or {}
+        print(f"  {role}: {pick.get('name', 'no recommendation')}")
     print(f"written to {site_dir}")
 
 

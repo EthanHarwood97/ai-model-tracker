@@ -3,6 +3,7 @@ import pathlib
 import shutil
 
 from .sources import SOURCES
+from .validation import validate_rows
 
 STATIC_DIR = pathlib.Path(__file__).resolve().parent.parent / "static"
 
@@ -36,6 +37,10 @@ def import_history(store, snapshots_dir):
             except Exception:
                 continue
             rows = data.get("rows") or []
+            try:
+                validate_rows(name, rows)
+            except ValueError:
+                continue
             snap = store.begin_snapshot(name, True, ts=data.get("ts"))
             store.insert_rows(snap, name, rows)
             store.finish_snapshot(snap, len(rows))
@@ -82,24 +87,29 @@ def _views(engine):
     meta = sorted([s for s in scores if s["meta"] is not None], key=lambda s: -s["meta"])
     coding = sorted([s for s in scores if s["measured"]], key=lambda s: -(s["coding_index"] or 0))
     est = sorted(
-        [s for s in scores if not s["measured"] and (json.loads(s.get("detail") or "{}").get("source") != "livebench")],
+        [s for s in scores if not s["measured"] and json.loads(s.get("detail") or "{}").get("source") != "livebench"],
         key=lambda s: -(s["coding_index"] or 0),
     )
     livebench = sorted(
         [s for s in scores if json.loads(s.get("detail") or "{}").get("source") == "livebench"],
         key=lambda s: -(s["coding_index"] or 0),
     )
-    value = [
+    value_task = [
         s for s in scores
-        if s["cost_task"] is not None or s["price_mtok"] is not None
+        if s["cost_basis"] == "benchmark_task" and s["cost_task"] is not None
     ]
-    value.sort(key=lambda s: -((s["coding_index"] or 0) / max(s["cost_task"] or 1e9, 1e-9)))
+    value_task.sort(key=lambda s: -((s["coding_index"] or 0) / max(s["cost_task"], 1e-9)))
+    value_token = [s for s in scores if s["cost_basis"] == "token_price" and s["price_mtok"] is not None]
+    value_token.sort(key=lambda s: -((s["coding_index"] or 0) / max(s["price_mtok"], 1e-9)))
     return {
         "meta": [_entity(s) for s in meta],
         "coding": [_entity(s) for s in coding],
         "est": [_entity(s) for s in est],
         "livebench": [_entity(s) for s in livebench],
-        "value": [_entity(s) for s in value],
+        "value_task": [_entity(s) for s in value_task],
+        "value_token": [_entity(s) for s in value_token],
+        "value": [_entity(s) for s in value_task + value_token],
+        "models": [_entity(s) for s in scores],
     }
 
 
@@ -108,11 +118,12 @@ def _sources(engine):
     for s in engine.store.source_status():
         out.append({
             "name": s["source"],
-            "state": "ok" if s["ok_count"] > 0 else "pending",
+            "state": "ok" if s.get("latest_ok") else "stale" if s.get("last_ok") else "pending",
             "last_ok": s["last_ok"],
-            "row_count": None,
-            "consecutive_errors": 0,
-            "last_error": None,
+            "last_run": s.get("last_run"),
+            "row_count": s.get("row_count"),
+            "consecutive_errors": s.get("consecutive_errors", 0),
+            "last_error": s.get("last_error"),
         })
     return out
 
@@ -159,6 +170,7 @@ def build_site(engine, site_dir):
     payload["changes"] = engine.store.recent_changes(200)
     payload["sources"] = _sources(engine)
     payload["radar"] = _radar(engine)
+    payload["recommendations"] = engine.recommendations()
     payload["status"] = {
         "last_cycle": engine.last_cycle,
         "latest_ts": engine.store.latest_scores()[0]["ts"] if engine.store.latest_scores() else None,

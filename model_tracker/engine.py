@@ -1,12 +1,15 @@
 import json as _json
 import logging
 import re
+import threading
 
 from . import alerts
-from .composite import build_components, build_market, compute_entities
+from .composite import build_components, compute_entities
 from .estimator import attach_model_to_coding, estimate_all, match_coding_to_models, regress
 from .normalize import canon, plain_key
+from .recommendations import build_recommendations
 from .sources import SOURCES
+from .validation import validate_rows
 
 log = logging.getLogger("tracker")
 
@@ -17,11 +20,21 @@ class Engine:
         self.store = store
         self.fetcher = fetcher
         self.last_cycle = None
+        self.generation_lock = threading.RLock()
+        self.fetch_lock = threading.Lock()
+        self.last_recommendations = {}
 
     def run_source(self, name, force=False):
         fetch_fn = SOURCES[name]
         try:
-            rows = fetch_fn(self.fetcher)
+            with self.fetch_lock:
+                previous_force = self.fetcher.force_refresh
+                self.fetcher.force_refresh = bool(force)
+                try:
+                    rows = fetch_fn(self.fetcher)
+                finally:
+                    self.fetcher.force_refresh = previous_force
+            validate_rows(name, rows)
             snap = self.store.begin_snapshot(name, True)
             self.store.insert_rows(snap, name, rows)
             self.store.finish_snapshot(snap, len(rows))
@@ -80,11 +93,16 @@ class Engine:
                     d["extra"] = _json.loads(d["extra"]) if d.get("extra") else {}
                 except Exception:
                     d["extra"] = {}
+                d["extra"].setdefault("retrieved_at", snaps[0]["ts"])
                 rows.append(d)
             data[name] = rows
         return data
 
     def compute(self):
+        with self.generation_lock:
+            return self._compute()
+
+    def _compute(self):
         data = self._latest_rows()
         coding_rows = [r for r in data.get("aa_coding", []) if r["kind"] == "coding_index"]
         model_rows = [r for r in data.get("aa_models", []) if r["kind"] == "intelligence"]
@@ -99,15 +117,19 @@ class Engine:
         market_rows = data.get("openrouter", [])
         for ent in entities:
             aa_price = ent["price_mtok"]
-            matches = []
+            exact_matches = []
+            prefix_matches = []
             ent_plain = ent["plain"]
             for m in market_rows:
                 or_id = m.get("extra", {}).get("or_id")
                 if not or_id:
                     continue
-                c = canon(or_id)
-                if c == ent_plain or c.startswith(ent_plain + ".") or c.startswith(ent_plain + "-"):
-                    matches.append((m, c == ent_plain))
+                c = plain_key(canon(or_id))
+                if c == ent_plain:
+                    exact_matches.append(m)
+                elif c and (c.startswith(ent_plain + ".") or c.startswith(ent_plain + "-")):
+                    prefix_matches.append(m)
+            matches = exact_matches or prefix_matches
             if not matches:
                 continue
 
@@ -119,32 +141,32 @@ class Engine:
                 on_tokens = {t for t in re.sub(r"[^a-z0-9]+", " ", or_name.lower()).strip().split() if len(t) > 1}
                 return len(ent_tokens & on_tokens)
 
-            scored = [(mm, exact, token_score(mm)) for mm, exact in matches]
-            top_token = max(s for _, _, s in scored)
-            top = [mm for mm, _, s in scored if s == top_token]
-            top.sort(key=lambda mm: (canon(mm["extra"].get("or_id") or "") != ent_plain,
-                                     len(mm["extra"].get("or_id") or ""),
-                                     mm["extra"].get("or_id") or ""))
+            scored = [(mm, token_score(mm)) for mm in matches]
+            top_token = max(s for _, s in scored)
+            top = [mm for mm, score in scored if score == top_token]
+            if len(top) > 1:
+                ent.setdefault("detail", {})["identity_status"] = "ambiguous_price_match"
+                continue
             m = top[0]
             p = m["extra"].get("price_blended")
             if p is not None:
                 ent["aa_price_mtok"] = aa_price
                 ent["price_mtok"] = p
                 ent["price_source"] = "openrouter"
+                ent["provider_route_id"] = m["extra"].get("or_id")
+                ent["cost_basis"] = "token_price"
+                ent["supports_tools"] = m["extra"].get("supports_tools")
+                if m["extra"].get("input_modalities"):
+                    ent["accepts_image"] = "image" in m["extra"]["input_modalities"]
                 ent.setdefault("detail", {})
                 ent["detail"]["price_input"] = m["extra"].get("price_prompt")
                 ent["detail"]["price_output"] = m["extra"].get("price_completion")
-                if aa_price and aa_price > 0 and ent.get("cost_task"):
-                    ratio = p / aa_price
-                    if 0.2 <= ratio <= 5 and abs(ratio - 1) > 0.02:
-                        ent["cost_task"] = round(ent["cost_task"] * ratio, 4)
-                        ent["detail"]["cost_adjusted"] = round(ratio, 3)
         existing_plains = {ent["plain"] for ent in entities}
         lb_by_name = {}
         for r in data.get("livebench", []):
             lb_by_name.setdefault(r["name"], {})[r["kind"]] = r
         for lb_name, kinds in lb_by_name.items():
-            plain = canon(lb_name)
+            plain = plain_key(canon(lb_name))
             if not plain or plain in existing_plains:
                 continue
             coding = kinds.get("livebench_coding", {}).get("score")
@@ -159,27 +181,52 @@ class Engine:
                 "harness": None,
                 "effort": None,
                 "measured": False,
+                "measurement_type": "livebench",
+                "score_source": "livebench_coding",
                 "coding_index": coding,
+                "aa_model_coding_index": None,
                 "cost_task": cost,
+                "cost_basis": "benchmark_task" if cost is not None else None,
                 "wall_time_s": None,
-                "intelligence": global_row.get("score"),
+                "intelligence": None,
+                "intelligence_estimated": None,
+                "deprecated": False,
                 "price_mtok": None,
+                "price_input": None,
+                "price_output": None,
+                "price_source": None,
+                "provider_route_id": None,
                 "model_name": lb_name,
                 "est_band": None,
-                "detail": {"source": "livebench"},
+                "detail": {
+                    "source": "livebench",
+                    "benchmark_id": "livebench_coding",
+                    "measurement_type": "livebench",
+                    "coding_support": {
+                        "value": coding,
+                        "benchmark_values": {"livebench_coding": coding},
+                        "sources": [{"source": "livebench", "kind": "livebench_coding", "raw": coding}],
+                    },
+                },
                 "meta": None,
                 "meta_min": None,
                 "meta_max": None,
                 "n_sources": 1,
+                "coverage": 0.0,
                 "components": {},
-                "categories": [],
+                "categories": ["coding_support"],
+                "supports_tools": None,
+                "accepts_image": None,
             }
             for m in market_rows:
-                if m.get("extra", {}).get("or_id") and canon(m["extra"]["or_id"]) == plain:
+                if m.get("extra", {}).get("or_id") and plain_key(canon(m["extra"]["or_id"])) == plain:
                     p = m["extra"].get("price_blended")
                     if p is not None:
                         ent["price_mtok"] = p
                         ent["price_source"] = "openrouter"
+                        ent["provider_route_id"] = m["extra"].get("or_id")
+                        ent["cost_basis"] = "token_price"
+                        ent["supports_tools"] = m["extra"].get("supports_tools")
                         ent["detail"]["price_input"] = m["extra"].get("price_prompt")
                         ent["detail"]["price_output"] = m["extra"].get("price_completion")
                     break
@@ -190,9 +237,9 @@ class Engine:
             extra = m.get("extra") or {}
             if not isinstance(extra, dict):
                 extra = {}
-            official = {k: v for k, v in extra.items() if k not in ("or_id", "version", "peak_hours_utc")}
+            official = {k: v for k, v in extra.items() if k not in ("or_id", "version")}
             if official:
-                ds_by_plain[canon(m["name"])] = official
+                ds_by_plain[plain_key(canon(m["name"]))] = official
         for alias, target in (
             ("deepseek4-flash", "deepseek4-flash-0731"),
             ("deepseek4-pro", "deepseek4-pro-0813"),
@@ -221,8 +268,14 @@ class Engine:
                     detail["openrouter_price_output"] = detail.get("price_output")
                 ent["price_mtok"] = round((float(off_in) * 3 + float(off_out)) / 4, 4)
                 ent["price_source"] = "deepseek_official"
+                ent["cost_basis"] = "token_price"
                 detail["price_input"] = off_in
                 detail["price_output"] = off_out
+                detail["price_schedule"] = {
+                    "off_peak": [off_in, off_out],
+                    "peak": [peak_in, peak_out],
+                    "peak_hours_utc": official.get("peak_hours_utc"),
+                }
         ttft_all = [ent.get("time_to_first_answer") for ent in entities]
         speed_all = [ent.get("output_speed") for ent in entities]
 
@@ -252,8 +305,18 @@ class Engine:
                 new_slugs.add(canon(ch["name"]))
         for ent in entities:
             ent["is_new"] = ent["plain"] in new_slugs or ent["slug"] in new_slugs
+            detail = ent.setdefault("detail", {})
+            if ent.get("price_input") is not None:
+                detail.setdefault("price_input", ent["price_input"])
+            if ent.get("price_output") is not None:
+                detail.setdefault("price_output", ent["price_output"])
+            if ent.get("provider_route_id") is not None:
+                detail["provider_route_id"] = ent["provider_route_id"]
+            if ent.get("price_source") is not None:
+                detail["price_source"] = ent["price_source"]
         diag = regress(pairs)
         self.store.replace_scores(entities)
+        self.last_recommendations = build_recommendations(entities, self.cfg)
         self.last_cycle = {
             "n_coding": len(coding_rows),
             "n_models": len(model_rows),
@@ -262,13 +325,36 @@ class Engine:
             "n_entities": len(entities),
             "regression": diag,
             "new_slugs": sorted(new_slugs),
+            "recommendations": {
+                role: result.get("recommended", {}).get("name") if result.get("recommended") else None
+                for role, result in self.last_recommendations.items()
+            },
         }
         return entities
 
     def cycle(self, force=False):
-        results, errors = self.run_all(force=force)
-        entities = self.compute()
-        return results, errors, entities
+        with self.generation_lock:
+            results, errors = self.run_all(force=force)
+            entities = self._compute()
+            return results, errors, entities
+
+    def recommendations(self):
+        if self.last_recommendations:
+            return self.last_recommendations
+        rows = self.store.latest_scores()
+        entities = []
+        for row in rows:
+            entity = dict(row)
+            for field in ("components", "detail"):
+                try:
+                    entity[field] = _json.loads(entity.get(field) or "{}")
+                except Exception:
+                    entity[field] = {}
+            entity["source_names"] = entity["detail"].get("source_names", [])
+            entity["evidence_groups"] = entity["detail"].get("evidence_groups", [])
+            entities.append(entity)
+        self.last_recommendations = build_recommendations(entities, self.cfg)
+        return self.last_recommendations
 
     def view(self, name):
         scores = self.store.latest_scores()
@@ -288,4 +374,6 @@ class Engine:
             elif name == "value":
                 if s["cost_task"] is not None or s["price_mtok"] is not None:
                     out.append(s)
+            elif name == "models":
+                out.append(s)
         return out

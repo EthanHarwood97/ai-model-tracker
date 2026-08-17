@@ -1,9 +1,17 @@
 # AI Model Score Tracker
 
-Self-hosted, multi-source tracker for AI model scores. Polls 13 leaderboards
-(primary: Artificial Analysis), computes a weighted **meta score** for every
-model, and produces **EST** (estimated) coding-agent scores for models that
-have an Intelligence Index but no coding-agent benchmark yet.
+Self-hosted, multi-source tracker for AI model evidence. Polls public
+leaderboards, keeps benchmark types separate, and produces four
+role-specific recommendations:
+
+- Research / lightweight agent
+- General coder
+- UI coder
+- Complex code
+
+Predicted scores, model-index scores, and Coding Agent measurements are kept
+separate. The aggregate meta score remains available as a coverage summary,
+but it is not used as a substitute for a role recommendation.
 
 Runs on Windows with only `httpx` + `fastapi` + `uvicorn`. Data lives in a
 single SQLite file with per-source snapshots and a change log.
@@ -47,35 +55,40 @@ server index warm-up); everything is disk-cached afterwards.
 
 ## Dashboard views
 
-- **Meta Ranking** – weighted composite across sources, sortable, with
-  measured/estimated + NEW badges and a confidence band.
-- **Coding Leaderboard** – AA Coding Agent Index (DeepSWE + Terminal-Bench v2
-  + SWE-Atlas-QnA), cost/task and wall time.
-- **EST · Unbenchmarked** – regression estimates with ±0.06 band, dual
-  regression agreement check, quirky-family (DeepSeek/GLM/Kimi) warnings.
-- **Value ($)** – coding index per dollar (per-task cost for measured, blended
-  $/Mtok for estimates).
+- **Role recommendations** – four recommendations with evidence, confidence,
+  projected OpenCode-turn cost, and warnings.
+- **Evidence explorer** – one model list with measured Coding Agent results,
+  model-index signals, benchmark support, and predictions labelled separately.
+- **Coding evidence** – AA Coding Agent measurements, benchmark task cost, and
+  wall time. Unrelated benchmark scores are not promoted into this list.
+- **Value (separate bases)** – benchmark task value and token-price value are
+  separate datasets; neither treats $/Mtok as $/task.
 - **Change Log** – new / updated / removed entries across all sources.
 - **Sources** – per-source health, last run, consecutive errors (auto-pauses
   after 4 failures).
 
-## Meta score design
+## Evidence and recommendation design
 
-Every source is normalized to 0–100 (min-max within the source's latest
-snapshot), then combined with configurable weights (`config.json`):
+Every source row is assigned an evidence lane before it can affect a score.
+The important distinction is between an actual benchmark measurement and a
+supporting signal:
 
-| Category | Weight | Sources |
+| Evidence lane | Examples | Used for |
 |---|---|---|
-| Coding-agent skill | 35% | AA coding index (measured) **or** EST estimate (flagged) |
-| General intelligence | 25% | AA Intelligence Index |
-| Code correctness | 20% | LiveBench coding, SWE-bench verified, EvalPlus, aider polyglot |
-| Human preference | 10% | LMArena arenas (text, code, vision, search, document…) |
-| Agentic / terminal | 10% | Terminal-Bench, DeepSWE |
+| Coding Agent | AA Coding Agent leaderboard | General coder and complex code |
+| Coding support | LiveBench coding, SWE-bench, Aider, EvalPlus | Supporting evidence |
+| Agentic / tool use | Terminal-Bench, DeepSWE, BFCL | Research and complex-code evidence |
+| Visual / frontend | LMArena vision and WebDev boards | UI coder |
+| Intelligence / reasoning | AA Intelligence, LiveBench reasoning | Research and supporting evidence |
 
-Weights renormalize over available categories; each composite records
-`n_sources`, last-update per source, and a confidence band (component
-dispersion, plus the ±0.06 EST error propagated when the coding score is an
-estimate).
+Repeated rows from one benchmark are aggregated before they contribute. A
+singleton benchmark cohort is treated as missing evidence rather than being
+given a synthetic score of 50. Every recommendation carries its measurement
+type, evidence coverage, source names, and warnings.
+
+The role profiles and OpenCode workload are configured in `config.json`.
+The default workload uses 120k input tokens and 8k output tokens per turn.
+Token price and benchmark task cost are never placed in the same price tier.
 
 ## The EST estimator
 
@@ -86,11 +99,10 @@ estimate).
 - matching rules: harness prefix stripped, effort suffix extracted,
   "Fallback" names excluded unless the coding entry says "(with fallback)",
   exact-effort variant required, non-estimated variants preferred.
-- family adjustments: −0.10 for GLM-5.2 / Kimi K2.6 / DeepSeek V4 Pro /
-  Gemini 3.6 Flash / Opus 4.7 family; +0.06 for Grok 4.5 and GPT-5.6.
-- estimates above the regression's training range are capped at 0.75 and
-  flagged `extrapolated` with a wider ±0.10 band (legacy high-intelligence
-  models would otherwise saturate at 1.0).
+- family adjustments apply only to predictions. Observed Coding Agent and
+  model-index values are never changed by a family heuristic.
+- estimates above the regression's training range are capped at 75 points and
+  flagged `extrapolated` with a wider ±10-point band.
 - validation: Qwen3.8 Max predicted 0.614 → actual 0.587.
 
 ## Sources (verified live 2026-08-13)
@@ -145,14 +157,17 @@ model_tracker/
   store.py         SQLite snapshots / rows / changes / scores
   normalize.py     model identity resolution (family+version canon keys)
   estimator.py     EST regressions, matching rules, outlier adjustments
-  composite.py     normalization + weighted meta score + bands
+  composite.py     evidence lanes, benchmark aggregation, meta summary
+  recommendations.py role-specific scoring and OpenCode cost model
+  validation.py    fail-closed source snapshot validation
   engine.py        orchestration: scrape → diff → estimate → score → alert
   scheduler.py     per-source threads, jitter, backoff, pause
   alerts.py        console banner + Windows toast
   web.py           FastAPI dashboard API
   cli.py           run-once / serve / summary / scrape
 static/            dashboard UI (vanilla JS, sortable tables)
-config.json        weights, intervals, EST params, alerts
+config.json        weights, intervals, EST params, workloads, alerts
+tests/             replayable scoring, recommendation, and source validation tests
 scripts/verify_aa.py   KNOWN-GOOD regression check for the AA scrapers
 data/              tracker.db + http cache (gitignored)
 ```
@@ -162,6 +177,7 @@ data/              tracker.db + http cache (gitignored)
 - `weights` – composite category weights
 - `normalization.mode` – `minmax` (default) or `percentile`
 - `est.*` – regression coefficients, ±band, cap, agreement threshold
+- `workloads.opencode_turn` – token assumptions and per-role budgets
 - `sources.<name>.interval_min` / `.enabled`
 - `alerts.desktop_toast` / `console_banner` / `max_consecutive_errors`
 - `known_underperform` / `known_overperform` – family adjustment lists

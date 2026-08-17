@@ -40,15 +40,18 @@ class Scheduler:
                 break
             started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             try:
-                rows, changes = self.engine.run_source(name)
-                consecutive = 0
-                with self.lock:
-                    self.status[name] = {
-                        "state": "ok", "last_run": started, "last_ok": started,
-                        "rows": len(rows), "new": len([c for c in changes if c["event"] == "new"]),
-                        "consecutive_errors": 0,
-                    }
-                self.engine.compute()
+                # Keep a score generation coherent: a source update and its
+                # recomputation must not interleave with another scheduler thread.
+                with self.engine.generation_lock:
+                    rows, changes = self.engine.run_source(name)
+                    consecutive = 0
+                    with self.lock:
+                        self.status[name] = {
+                            "state": "ok", "last_run": started, "last_ok": started,
+                            "rows": len(rows), "new": len([c for c in changes if c["event"] == "new"]),
+                            "consecutive_errors": 0,
+                        }
+                    self.engine._compute()
             except Exception as e:
                 consecutive += 1
                 with self.lock:

@@ -26,6 +26,12 @@ def create_app(engine, scheduler=None):
         rows.sort(key=lambda s: -s["meta"])
         return [_entity_dict(s) for s in rows]
 
+    @app.get("/api/views/models")
+    def view_models():
+        rows = engine.store.latest_scores()
+        rows.sort(key=lambda s: (-(s["meta"] or 0), -(s["coding_index"] or 0), s["name"]))
+        return [_entity_dict(s) for s in rows]
+
     @app.get("/api/views/coding")
     def view_coding():
         rows = [s for s in engine.store.latest_scores() if s["measured"]]
@@ -56,8 +62,30 @@ def create_app(engine, scheduler=None):
             s for s in engine.store.latest_scores()
             if s["cost_task"] is not None or s["price_mtok"] is not None
         ]
-        rows.sort(key=lambda s: -((s["coding_index"] or 0) / max(s["cost_task"] or 1e9, 1e-9)))
+        rows.sort(key=lambda s: (
+            0 if s["cost_basis"] == "benchmark_task" else 1,
+            -((s["coding_index"] or 0) / max(s["cost_task"], 1e-9))
+            if s["cost_basis"] == "benchmark_task" and s["cost_task"] is not None
+            else -((s["coding_index"] or 0) / max(s["price_mtok"], 1e-9))
+            if s["price_mtok"] is not None else 0,
+        ))
         return [_entity_dict(s) for s in rows]
+
+    @app.get("/api/views/value-task")
+    def view_value_task():
+        rows = [s for s in engine.store.latest_scores() if s["cost_basis"] == "benchmark_task" and s["cost_task"] is not None]
+        rows.sort(key=lambda s: -((s["coding_index"] or 0) / max(s["cost_task"], 1e-9)))
+        return [_entity_dict(s) for s in rows]
+
+    @app.get("/api/views/value-token")
+    def view_value_token():
+        rows = [s for s in engine.store.latest_scores() if s["cost_basis"] == "token_price" and s["price_mtok"] is not None]
+        rows.sort(key=lambda s: -((s["coding_index"] or 0) / max(s["price_mtok"], 1e-9)))
+        return [_entity_dict(s) for s in rows]
+
+    @app.get("/api/recommendations")
+    def recommendations():
+        return engine.recommendations()
 
     @app.get("/api/changes")
     def changes():
@@ -103,7 +131,7 @@ def create_app(engine, scheduler=None):
             return JSONResponse({"ok": False, "msg": "refresh already running"}, status_code=409)
         try:
             results, errors, entities = engine.cycle(force=True)
-            return {"ok": True, "results": results, "errors": errors, "n_entities": len(entities)}
+            return {"ok": not errors, "results": results, "errors": errors, "n_entities": len(entities)}
         finally:
             refresh_lock.release()
 

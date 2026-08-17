@@ -28,12 +28,14 @@ class Fetcher:
             self.cache_dir = DATA_DIR.parent / self.cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.last_status = {}
+        self.force_refresh = False
 
     def _cache_path(self, url):
         key = hashlib.sha256(url.encode("utf-8")).hexdigest()[:20]
         return self.cache_dir / (key + ".bin")
 
     def get(self, url, ttl=1800, headers=None, force=False):
+        force = force or self.force_refresh
         cp = self._cache_path(url)
         if not force and cp.exists() and (time.time() - cp.stat().st_mtime) < ttl:
             r = httpx.Response(200, content=cp.read_bytes(), request=httpx.Request("GET", url))
@@ -53,9 +55,13 @@ class Fetcher:
                     last_err = RuntimeError(f"HTTP {r.status_code}")
                     continue
                 if r.status_code >= 400:
-                    return r
+                    raise httpx.HTTPStatusError(
+                        f"HTTP {r.status_code} for {url}", request=r.request, response=r
+                    )
                 cp.write_bytes(r.content)
                 return r
+            except httpx.HTTPStatusError:
+                raise
             except Exception as e:
                 last_err = e
                 time.sleep(self.backoff_sec * (2 ** attempt))

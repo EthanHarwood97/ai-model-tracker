@@ -23,6 +23,10 @@ def fetch(f):
         blended = None
         if prompt is not None and completion is not None:
             blended = round((prompt * 3 + completion) / 4, 4)
+        architecture = m.get("architecture") or {}
+        supported_parameters = m.get("supported_parameters")
+        input_modalities = architecture.get("input_modalities") or m.get("input_modalities") or []
+        output_modalities = architecture.get("output_modalities") or m.get("output_modalities") or []
         rows.append({
             "kind": "market",
             "name": m.get("id", "?"),
@@ -36,7 +40,14 @@ def fetch(f):
                 "price_blended": blended,
                 "context_length": m.get("context_length"),
                 "created": m.get("created"),
-                "architecture": m.get("architecture"),
+                "architecture": architecture,
+                "supported_parameters": supported_parameters or [],
+                "input_modalities": input_modalities,
+                "output_modalities": output_modalities,
+                "supports_tools": (
+                    None if supported_parameters is None
+                    else bool({"tools", "tool_choice"}.intersection(supported_parameters))
+                ),
             },
         })
     return rows

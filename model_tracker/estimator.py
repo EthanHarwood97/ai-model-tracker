@@ -20,6 +20,26 @@ def _matches_stem(name, stem):
     return re.search(re.escape(stem), name, re.IGNORECASE) is not None
 
 
+def _identity_tokens(value):
+    return {
+        token for token in re.sub(r"[^a-z0-9]+", " ", str(value).lower()).split()
+        if len(token) > 1
+    }
+
+
+def _coding_points(value):
+    """Return a coding score on the 0-100 scale without guessing its meaning."""
+    if value is None:
+        return None
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= score <= 1:
+        score *= 100
+    return score if 0 <= score <= 100 else None
+
+
 def match_coding_to_models(coding_rows, model_rows):
     by_slug = {}
     for m in model_rows:
@@ -43,28 +63,47 @@ def match_coding_to_models(coding_rows, model_rows):
         stem = (extra.get("model") or c["name"]).strip()
         with_fallback = extra.get("with_fallback", False)
         effort = extra.get("effort")
-        cands = [m for m in models if _matches_stem(m["name"], stem)]
+        stem_key = plain_key(canon(stem))
+        exact = [m for m in models if plain_key(canon(m["name"])) == stem_key]
+        if exact:
+            cands = exact
+        else:
+            stem_tokens = _identity_tokens(stem)
+            candidates = [
+                m for m in models
+                if stem_tokens and stem_tokens.issubset(_identity_tokens(m["name"]))
+            ]
+            if not candidates:
+                continue
+            overlap = [len(stem_tokens & _identity_tokens(m["name"])) for m in candidates]
+            best_overlap = max(overlap)
+            cands = [m for m, score in zip(candidates, overlap) if score == best_overlap]
         if not cands:
             continue
         if with_fallback:
             fb = [m for m in cands if "fallback" in m["name"].lower()]
-            if fb:
-                cands = fb
+            if not fb:
+                continue
+            cands = fb
         else:
             cands = [m for m in cands if "fallback" not in m["name"].lower()]
+            if not cands:
+                continue
         if effort and effort in EFFORT_PATTERNS:
             pat = EFFORT_PATTERNS[effort]
             ef = [m for m in cands if pat.search(m["name"])]
-            if ef:
-                cands = ef
-            else:
+            if not ef:
                 continue
+            cands = ef
         non_est = [m for m in cands if not m["extra"].get("intelligence_estimated")]
         if non_est:
             cands = non_est
         if not cands:
             continue
         cands.sort(key=lambda m: -m["score"])
+        if len(cands) > 1 and cands[0]["score"] == cands[1]["score"]:
+            # Do not silently attach an arbitrary provider/version when the source is ambiguous.
+            continue
         best = cands[0]
         matched_slugs.add(_model_key(best))
         pairs.append({"coding": c, "model": best})
@@ -116,57 +155,81 @@ def estimate_for_model(m, cfg, train_max_iq=None):
     iq_val = m.get("score")
     iq = float(iq_val) if iq_val is not None else None
     coding = m["extra"].get("coding_index")
-    coding_num = float(coding) / 100.0 if coding is not None else None
-    legacy_scale = iq is not None and iq < 30
-    has_real_coding = coding_num is not None and not legacy_scale
+    coding_points = _coding_points(coding)
     est1 = est_cfg["int_slope"] * iq + est_cfg["int_intercept"] if iq is not None else None
     est2 = None
-    if coding_num is not None:
-        est2 = est_cfg["code_slope"] * coding_num + est_cfg["code_intercept"]
-    adj, adj_reason = _fam_adj(m["name"], cfg)
+    if coding_points is not None:
+        # The configured cross-check is trained on coding-index points, not a 0-1 fraction.
+        est2 = est_cfg["code_slope"] * coding_points + est_cfg["code_intercept"]
     cap = float(est_cfg.get("cap", 0.75))
+    if est_cfg.get("cap_points") is not None:
+        cap = float(est_cfg["cap_points"]) / 100
     extrapolated = train_max_iq is not None and iq is not None and iq > train_max_iq
-    adj_f = float(adj)
     cap_f = float(cap)
-    if has_real_coding and coding_num is not None:
-        score = max(0.0, min(cap_f, coding_num + adj_f))
-        source = "aa_coding_index"
+    band_points = float(est_cfg.get("band_points", est_cfg.get("band", 0.06) * 100))
+    extrapolated_band_points = float(
+        est_cfg.get("extrapolated_band_points", est_cfg.get("extrapolated_band", 0.10) * 100)
+    )
+
+    if coding_points is not None:
+        # AA's model leaderboard coding index is observed evidence, but it is not an
+        # AA Coding Agent measurement and must not enter the measured coding view.
+        score_points = coding_points
+        source = "aa_model_coding_index"
+        measurement_type = "aa_model_index"
+        estimated = False
+        adjustment = 0.0
+        adjustment_reason = None
+        capped = False
+        band = None
     elif est1 is not None:
-        score = min(cap_f, max(0.0, est1 + adj_f))
-        source = "extrapolated"
+        adjustment, adjustment_reason = _fam_adj(m["name"], cfg)
+        raw_score = est1 + float(adjustment)
+        capped = raw_score > cap_f
+        score = min(cap_f, max(0.0, raw_score))
+        score_points = score * 100
+        source = "intelligence_regression"
+        measurement_type = "predicted_coding_agent"
+        estimated = True
+        band = max(band_points, extrapolated_band_points) if extrapolated else band_points
     else:
-        score = 0.0
+        score_points = None
         source = "no_data"
+        measurement_type = "unavailable"
+        estimated = True
+        adjustment = 0.0
+        adjustment_reason = None
+        capped = False
+        band = None
+
     detail = {
         "est_from_intelligence": round(est1, 4) if est1 is not None else None,
         "est_from_coding_index": round(est2, 4) if est2 is not None else None,
-        "adjustment": adj_f,
-        "adjustment_reason": adj_reason,
+        "adjustment": float(adjustment),
+        "adjustment_reason": adjustment_reason,
         "quirky_family": _quirky(m["name"]),
         "intelligence_index": iq,
-        "coding_index": coding,
+        "coding_index": coding_points,
+        "measurement_type": measurement_type,
         "extrapolated": extrapolated,
-        "capped": (score > cap_f),
+        "capped": capped,
         "source": source,
+        "band_points": band,
     }
-    if est2 is not None:
+    if est1 is not None and est2 is not None:
         detail["agrees"] = abs(est1 - est2) <= est_cfg["agree_threshold"]
     else:
         detail["agrees"] = None
-    band = float(est_cfg["band"])
-    if not has_real_coding:
-        if extrapolated:
-            band = max(band, float(est_cfg.get("extrapolated_band", 0.10)))
-    else:
-        band = max(band * 0.5, 0.02)
     detail["band"] = band
     return {
         "slug": m["slug"] or canon(m["name"]),
         "name": m["name"],
-        "score": round(score * 100, 2),
-        "score_raw": score,
-        "estimated": not has_real_coding,
+        "score": round(score_points, 2) if score_points is not None else None,
+        "score_raw": round(score_points / 100, 4) if score_points is not None else None,
+        "estimated": estimated,
         "band": band,
+        "measurement_type": measurement_type,
+        "score_source": source,
         "model_row": m,
         "detail": detail,
     }
@@ -213,12 +276,16 @@ def attach_model_to_coding(pairs):
             "model_name": m["name"],
             "intelligence": m["score"],
             "intelligence_estimated": m["extra"].get("intelligence_estimated", False),
+            "deprecated": m["extra"].get("deprecated", False),
             "price_mtok": m["extra"].get("price_1m_blended"),
+            "price_input": m["extra"].get("price_1m_input"),
+            "price_output": m["extra"].get("price_1m_output"),
             "release_date": m["extra"].get("release_date"),
             "context_window": m["extra"].get("context_window"),
             "output_speed": m["extra"].get("output_speed"),
             "time_to_first_answer": m["extra"].get("time_to_first_answer"),
             "mmmu_pro": m["extra"].get("mmmu_pro"),
             "accepts_image": m["extra"].get("accepts_image"),
+            "supports_tools": m["extra"].get("supports_tools"),
         }
     return out

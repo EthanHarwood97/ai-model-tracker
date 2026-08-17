@@ -41,7 +41,7 @@ main { margin: 0 auto; max-width: 1120px; padding: clamp(26px, 5vw, 56px) clamp(
 .page-head h1 { font: 650 clamp(34px, 5.5vw, 60px)/1 var(--display); letter-spacing: -.05em; margin: 0 0 12px; }
 .page-head p { color: var(--muted); font-size: 14px; line-height: 1.65; margin: 0; max-width: 620px; }
 
-.picks { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); margin: 30px 0 18px; }
+.picks { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); margin: 30px 0 18px; }
 .pick-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -169,6 +169,7 @@ main { margin: 0 auto; max-width: 1120px; padding: clamp(26px, 5vw, 56px) clamp(
 .footer { border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 11px; justify-content: space-between; margin: 0 clamp(18px, 5vw, 64px); padding: 16px 0 30px; }
 
 @media (max-width: 900px) {
+  .picks { grid-template-columns: repeat(2, 1fr); }
   .list-head, .row { grid-template-columns: 26px minmax(0, 1fr) 70px 70px 24px; }
   .list-head .cell:nth-child(4), .row .cell:nth-child(4) { display: none; }
   .list-head .cell-price, .row .cell-price { display: none; }

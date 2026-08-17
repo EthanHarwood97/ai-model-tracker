@@ -41,7 +41,7 @@ FAMILY_PATTERNS = [
     ("opus", re.compile(r"\bopus[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
     ("sonnet", re.compile(r"\bsonnet[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
     ("haiku", re.compile(r"\bhaiku[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
-    ("gpt", re.compile(r"\bgpt[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)(?:\s*[-/]?\s*(sol|terra|luna|mini|nano|flash|pro|max))?")),
+    ("gpt", re.compile(r"\bgpt[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)(?:\s*[-/]?\s*(sol|terra|luna|mini|nano|flash|pro|max|codex|chat))?")),
     ("grok", re.compile(r"\bgrok[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
     ("gemini", re.compile(r"\bgemini[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)[\s-]*(flash|pro|ultra|light|lite|nano|turbo)?")),
     ("deepseek", re.compile(r"\bdeepseek[\s-]*v?(\d{1,2}(?:[.-]\d+)?)(?!\d)[\s-]*(r1|chat|flash|pro|coder|reasoner|v3)?[\s-]*(\d{4,8})?")),
@@ -127,16 +127,18 @@ def canon_with_effort(name, effort=None, with_fallback=False):
 
 def slug_for_row(row):
     name = row.get("name") or ""
-    c = canon(name)
-    if c:
-        return c
     extra = row.get("extra") or {}
-    for hint in ("canon", "model_key", "slug"):
+    # Prefer explicit provider/model identity supplied by the source. Display
+    # names often contain a harness or board label that is not model identity.
+    for hint in ("model_key", "model", "canon", "slug"):
         v = extra.get(hint)
         if v:
             c = canon(v)
             if c:
                 return c
+    c = canon(name)
+    if c:
+        return c
     return canon_with_effort(
         name,
         effort=extra.get("effort"),
