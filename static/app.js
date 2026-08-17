@@ -79,23 +79,6 @@ function candidateMap() {
   return new Map((roleData().candidates || []).map((candidate) => [candidate.slug, candidate]));
 }
 
-function projectedCost(model) {
-  const candidate = candidateMap().get(model.slug);
-  if (candidate?.projected_cost_usd !== null && candidate?.projected_cost_usd !== undefined) return candidate.projected_cost_usd;
-  if (model.price_mtok !== null && model.price_mtok !== undefined) return (Number(model.price_mtok) * 128000) / 1000000;
-  return null;
-}
-
-function tokenPrice(model) {
-  return model.price_mtok === null || model.price_mtok === undefined ? null : Number(model.price_mtok);
-}
-
-function primaryScore(model) {
-  const candidate = candidateMap().get(model.slug);
-  if (candidate) return candidate.role_score;
-  return model.coding_index;
-}
-
 function badges(model) {
   const output = [];
   const kind = kindOf(model);
@@ -116,17 +99,38 @@ function filteredModels() {
   }
   if (state.status !== "all") models = models.filter((model) => kindOf(model) === state.status);
   const candidates = candidateMap();
+  const sortValue = (model, key) => {
+    const candidate = candidates.get(model.slug);
+    switch (key) {
+      case "role":
+        return candidate?.role_score ?? model.coding_index ?? null;
+      case "general":
+        return candidate?.quality_score ?? model.intelligence ?? null;
+      case "coding":
+        return model.coding_index ?? null;
+      case "visual":
+        return model.vision ?? null;
+      case "price":
+        return model.cost_task ?? null;
+      case "priceM":
+        return model.price_mtok ?? null;
+      case "name":
+        return String(model.name || "").toLowerCase();
+      default:
+        return candidate?.role_score ?? model.coding_index ?? null;
+    }
+  };
+  const ascending = state.sort === "price" || state.sort === "priceM" || state.sort === "name";
   models.sort((a, b) => {
-    let result;
-    if (state.sort === "role") result = (candidates.get(b.slug)?.role_score ?? -1) - (candidates.get(a.slug)?.role_score ?? -1);
-    else if (state.sort === "coding") result = Number(b.coding_index || 0) - Number(a.coding_index || 0);
-    else if (state.sort === "general") result = Number(b.intelligence || 0) - Number(a.intelligence || 0);
-    else if (state.sort === "visual") result = Number(b.vision || 0) - Number(a.vision || 0);
-    else if (state.sort === "price") result = (projectedCost(a) ?? Infinity) - (projectedCost(b) ?? Infinity);
-    else if (state.sort === "priceM") result = (tokenPrice(a) ?? Infinity) - (tokenPrice(b) ?? Infinity);
-    else if (state.sort === "name") result = String(a.name).localeCompare(String(b.name));
-    else result = primaryScore(b) - primaryScore(a);
-    return result * state.sortDir;
+    if (state.sort === "name") return sortValue(a, "name").localeCompare(sortValue(b, "name")) * state.sortDir;
+    const av = sortValue(a, state.sort);
+    const bv = sortValue(b, state.sort);
+    const aMissing = av === null || av === undefined || Number.isNaN(av);
+    const bMissing = bv === null || bv === undefined || Number.isNaN(bv);
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    return (bv - av) * (ascending ? -1 : 1) * state.sortDir;
   });
   return models;
 }
@@ -260,9 +264,9 @@ function controls() {
     <select class="sort-select" id="sort-select" aria-label="Sort models">
       <option value="role" ${state.sort === "role" ? "selected" : ""}>Sort: role score</option>
       <option value="coding" ${state.sort === "coding" ? "selected" : ""}>Sort: coding signal</option>
-      <option value="general" ${state.sort === "general" ? "selected" : ""}>Sort: general score</option>
+      <option value="general" ${state.sort === "general" ? "selected" : ""}>Sort: quality</option>
       <option value="visual" ${state.sort === "visual" ? "selected" : ""}>Sort: visual score</option>
-      <option value="price" ${state.sort === "price" ? "selected" : ""}>Sort: projected cost</option>
+      <option value="price" ${state.sort === "price" ? "selected" : ""}>Sort: task cost</option>
       <option value="priceM" ${state.sort === "priceM" ? "selected" : ""}>Sort: token price</option>
       <option value="name" ${state.sort === "name" ? "selected" : ""}>Sort: name A-Z</option>
     </select>
