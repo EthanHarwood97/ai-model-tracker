@@ -16,6 +16,7 @@ SOURCE_CATEGORIES = {
     "scale_seal": "agentic",
     "gorilla": "tool_use",
     "openrouter": "market",
+    "deepseek": "market",
     "aa_changelog": "signal",
 }
 
@@ -65,6 +66,8 @@ def build_components(source_rows_by_source, cfg):
                     continue
                 node = comps.setdefault(key, {})
                 cat = _kind_category(source, kind)
+                if cat == "market":
+                    continue
                 entry = {
                     "source": source,
                     "kind": kind,

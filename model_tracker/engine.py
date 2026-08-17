@@ -159,6 +159,24 @@ class Engine:
                         ent["detail"]["price_output"] = m["extra"].get("price_completion")
                     break
             entities.append(ent)
+        ds_rows = data.get("deepseek", [])
+        for ent in entities:
+            for m in ds_rows:
+                extra = m.get("extra") or {}
+                if canon(m["name"]) != ent["plain"]:
+                    continue
+                official = {k: v for k, v in extra.items() if k not in ("or_id", "version", "peak_hours_utc")}
+                if official:
+                    ent.setdefault("detail", {})["ds_official"] = official
+                if ent.get("price_mtok") is None:
+                    off_in = official.get("cache_miss_off_peak")
+                    off_out = official.get("output_off_peak")
+                    if isinstance(off_in, (int, float)) and isinstance(off_out, (int, float)):
+                        ent["price_mtok"] = round((off_in * 3 + off_out) / 4, 4)
+                        ent["price_source"] = "deepseek"
+                        ent["detail"]["price_input"] = off_in
+                        ent["detail"]["price_output"] = off_out
+                break
         ttft_all = [ent.get("time_to_first_answer") for ent in entities]
         speed_all = [ent.get("output_speed") for ent in entities]
 

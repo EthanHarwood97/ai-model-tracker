@@ -1,4 +1,4 @@
-from . import aa_src, aider, deepswe, evalplus, gorilla, hf_openllm, livebench, lmarena, openrouter, swebench, tbench
+from . import aa_src, aider, deepseek, deepswe, evalplus, gorilla, hf_openllm, livebench, lmarena, openrouter, swebench, tbench
 
 SOURCES = {
     "aa_coding": aa_src.fetch_coding,
@@ -11,6 +11,7 @@ SOURCES = {
     "evalplus": evalplus.fetch,
     "hf_openllm": hf_openllm.fetch,
     "openrouter": openrouter.fetch,
+    "deepseek": deepseek.fetch,
     "tbench": tbench.fetch,
     "deepswe": deepswe.fetch,
     "gorilla": gorilla.fetch,

@@ -40,6 +40,7 @@
     "evalplus":       { "enabled": true,  "interval_min": 1440, "category": "code_correctness", "change_threshold": 0.5 },
     "hf_openllm":     { "enabled": true,  "interval_min": 1440, "category": "intelligence", "change_threshold": 0.5 },
     "openrouter":     { "enabled": true,  "interval_min": 720, "category": "market" },
+    "deepseek":       { "enabled": true,  "interval_min": 720, "category": "market", "change_threshold": 0.01 },
     "scale_seal":     { "enabled": false, "interval_min": 1440, "category": "agentic" },
     "tbench":         { "enabled": true,  "interval_min": 1440, "category": "agentic", "change_threshold": 0.5 },
     "deepswe":        { "enabled": true,  "interval_min": 1440, "category": "agentic", "change_threshold": 0.5 },

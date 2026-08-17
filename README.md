@@ -107,6 +107,7 @@ estimate).
 | EvalPlus | `evalplus.github.io/results.json` | HumanEval+/MBPP+ pass@1 mean |
 | HF Open LLM | datasets-server `open-llm-leaderboard/contents` | chat + pretrained rows, flagged filtered, top 300 |
 | OpenRouter | `openrouter.ai/api/v1/models` | pricing / context / created (market data, no score) |
+| DeepSeek official | `api-docs.deepseek.com/quick_start/pricing` | first-party peak/off-peak pricing (market data) |
 | Terminal-Bench | `tbench.ai` | accuracy JSON embedded in RSC payload |
 | DeepSWE | `deepswe.datacurve.ai/artifacts/v1/leaderboard.json` | task pass-any rate, CIs, cost |
 | BFCL (Gorilla) | `gorilla.cs.berkeley.edu/data_overall.csv` | tool-use (informational, not in composite weights) |
@@ -129,6 +130,11 @@ cached on disk per-URL. Personal use — respect each site's ToS.
   not AA-benchmarked, worse prompt-caching for agents; direct providers
   (DeepSeek official, DeepInfra, CoreWeave, Novita, Cerebras, Groq) are
   usually cheaper/faster. First-party for closed frontier models.
+- DeepSeek repriced 2026-08-16 (16:00 UTC): flat rates replaced by
+  peak/off-peak billing. V4 Pro went from $0.435/$0.87 (in/out) to
+  $0.66/$1.98 off-peak and $1.32/$3.96 at peak (01:00–04:00 and
+  06:00–10:00 UTC) — up to 4.55× on output, 12× on cache hits. Third-party
+  hosts lagged the change; the `deepseek` source tracks the official rates.
 
 ## Layout
 
