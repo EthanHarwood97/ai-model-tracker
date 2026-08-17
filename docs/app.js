@@ -210,6 +210,9 @@ function detailHtml(model) {
           <div class="spec-row"><span>Cost per task</span><b>${money(model.cost_task)}</b>${adjusted}</div>
           <div class="spec-row"><span>Price per 1M tokens</span><b>${money(model.price_mtok)}</b></div>
           <div class="spec-row"><span>Input / output</span><b>${money(detail.price_input)} / ${money(detail.price_output)}</b></div>
+          ${detail.ds_official ? `
+          <div class="spec-row"><span>DeepSeek official · off-peak</span><b>${money(detail.ds_official.cache_miss_off_peak)} / ${money(detail.ds_official.output_off_peak)}</b></div>
+          <div class="spec-row"><span>DeepSeek official · peak</span><b>${money(detail.ds_official.cache_miss_peak)} / ${money(detail.ds_official.output_peak)}</b></div>` : ""}
         </div>
         ${warningsHtml}
       </div>
