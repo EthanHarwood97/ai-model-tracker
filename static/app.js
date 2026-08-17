@@ -16,6 +16,7 @@ const state = {
   status: "all",
   sort: "role",
   sortDir: 1,
+  view: "curated",
   staticMode: false,
   expanded: new Set(),
 };
@@ -79,6 +80,35 @@ function candidateMap() {
   return new Map((roleData().candidates || []).map((candidate) => [candidate.slug, candidate]));
 }
 
+function priceIn(model) {
+  return model.detail?.price_input ?? null;
+}
+
+function priceOut(model) {
+  return model.detail?.price_output ?? null;
+}
+
+function roleScoreValue(model) {
+  const candidate = candidateMap().get(model.slug);
+  return candidate?.role_score ?? model.coding_index ?? null;
+}
+
+function qualityValue(model) {
+  const candidate = candidateMap().get(model.slug);
+  return candidate?.quality_score ?? model.intelligence ?? null;
+}
+
+function valueScore(model) {
+  const out = priceOut(model);
+  const score = roleScoreValue(model);
+  if (out === null || out === undefined || Number(out) <= 0 || score === null || score === undefined) return null;
+  return Number(score) / Number(out);
+}
+
+function isPriced(model) {
+  return priceIn(model) !== null || priceOut(model) !== null;
+}
+
 function badges(model) {
   const output = [];
   const kind = kindOf(model);
@@ -98,29 +128,33 @@ function filteredModels() {
     models = models.filter((model) => String(model.name || "").toLowerCase().includes(query));
   }
   if (state.status !== "all") models = models.filter((model) => kindOf(model) === state.status);
-  const candidates = candidateMap();
+  if (state.view === "curated") {
+    const hasScore = (model) => model.coding_index !== null && model.coding_index !== undefined || model.intelligence !== null && model.intelligence !== undefined;
+    models = models.filter((model) => isPriced(model) && hasScore(model));
+  }
   const sortValue = (model, key) => {
-    const candidate = candidates.get(model.slug);
     switch (key) {
       case "role":
-        return candidate?.role_score ?? model.coding_index ?? null;
+        return roleScoreValue(model);
       case "general":
-        return candidate?.quality_score ?? model.intelligence ?? null;
+        return qualityValue(model);
+      case "value":
+        return valueScore(model);
+      case "in":
+        return priceIn(model);
+      case "out":
+        return priceOut(model);
       case "coding":
         return model.coding_index ?? null;
       case "visual":
         return model.vision ?? null;
-      case "price":
-        return model.cost_task ?? null;
-      case "priceM":
-        return model.price_mtok ?? null;
       case "name":
         return String(model.name || "").toLowerCase();
       default:
-        return candidate?.role_score ?? model.coding_index ?? null;
+        return roleScoreValue(model);
     }
   };
-  const ascending = state.sort === "price" || state.sort === "priceM" || state.sort === "name";
+  const ascending = state.sort === "in" || state.sort === "out" || state.sort === "name";
   models.sort((a, b) => {
     if (state.sort === "name") return sortValue(a, "name").localeCompare(sortValue(b, "name")) * state.sortDir;
     const av = sortValue(a, state.sort);
@@ -133,6 +167,24 @@ function filteredModels() {
     return (bv - av) * (ascending ? -1 : 1) * state.sortDir;
   });
   return models;
+}
+
+function statCards() {
+  const pool = state.models.filter((model) => isPriced(model));
+  const topScore = [...pool].sort((a, b) => (roleScoreValue(b) ?? -1) - (roleScoreValue(a) ?? -1))[0];
+  const valuePool = pool.filter((model) => (roleScoreValue(model) ?? -1) >= 60);
+  const topValue = [...valuePool].sort((a, b) => (valueScore(b) ?? -1) - (valueScore(a) ?? -1))[0];
+  const topScoreValue = roleScoreValue(topScore);
+  const topValueScore = valueScore(topValue);
+  const topValueOut = priceOut(topValue);
+  const valueMeta = topValue && topValueScore !== null
+    ? `${esc(topValue.name)} · ${money(topValueOut)}/1M out`
+    : "No model clears the 60-score floor";
+  return `<section class="stat-cards">
+    <div class="stat-card"><span class="lbl">Models tracked</span><b class="big">${state.models.length}</b><small>${pool.length} with score and price</small></div>
+    <div class="stat-card"><span class="lbl">Top ${ROLE_LABELS[state.role]} score</span><b class="big accent">${topScore ? num(topScoreValue) : "—"}</b><small>${topScore ? esc(topScore.name) : "No candidates"}</small></div>
+    <div class="stat-card"><span class="lbl">Best value</span><b class="big gold">${topValueScore !== null ? num(topValueScore) : "—"}</b><small>${valueMeta} · 60+ score only</small></div>
+  </section>`;
 }
 
 function roleCard(role) {
@@ -234,14 +286,18 @@ function rowHtml(model, rank) {
   const mainNote = candidate ? `${ROLE_LABELS[state.role]} score` : measurementLabel(model);
   const secondaryValue = candidate?.quality_score ?? model.intelligence;
   const secondaryNote = candidate ? "quality" : "general";
+  const value = valueScore(model);
+  const inPrice = priceIn(model);
+  const outPrice = priceOut(model);
   return `<div class="mgroup">
     <article class="row ${kind === "estimated" ? "est-row" : ""} ${kind === "livebench" ? "lb-row" : ""} ${expanded ? "open" : ""}" data-slug="${esc(model.slug)}" tabindex="0" role="button" aria-expanded="${expanded}">
       <span class="rank">${rank}</span>
       <div class="model"><strong>${esc(modelName)}</strong>${harness ? `<span class="harness">${esc(harness)}</span>` : ""}${badges(model)}</div>
       <div class="cell score-cell"><b>${num(mainValue)}</b><small>${esc(mainNote)}</small></div>
-      <div class="cell"><b>${num(secondaryValue)}</b><small>${secondaryNote}</small></div>
-      <div class="cell cell-task"><b>${money(model.cost_task)}</b><small>benchmark task</small></div>
-      <div class="cell cell-price"><b>${tokenPriceLabel(model)}</b><small>${tokenPriceNote(model)}</small></div>
+      <div class="cell cell-quality"><b>${num(secondaryValue)}</b><small>${secondaryNote}</small></div>
+      <div class="cell value-cell"><b>${value !== null && value !== undefined ? num(value) : "—"}</b><small>pts / $1M out</small></div>
+      <div class="cell mono-cell cell-in"><b>${inPrice !== null && inPrice !== undefined ? money(inPrice) : "—"}</b><small>in / 1M tok</small></div>
+      <div class="cell mono-cell cell-out"><b>${outPrice !== null && outPrice !== undefined ? money(outPrice) : "—"}</b><small>out / 1M tok</small></div>
       <div class="expand">${expanded ? "−" : "+"}</div>
     </article>
     ${expanded ? detailHtml(model) : ""}
@@ -249,25 +305,29 @@ function rowHtml(model, rank) {
 }
 
 function headCell(key, label) {
+  const cls = { general: "cell-quality", value: "cell-value", in: "cell-in", out: "cell-out" }[key] || "";
   const active = state.sort === key;
   const arrow = active ? (state.sortDir === 1 ? " ▼" : " ▲") : "";
-  return `<button class="head-cell ${active ? "active" : ""}" data-sort-key="${key}" title="Click to sort">${label}${arrow}</button>`;
+  return `<button class="head-cell ${cls} ${active ? "active" : ""}" data-sort-key="${key}" title="Click to sort">${label}${arrow}</button>`;
 }
 
 function controls() {
   const roleButtons = ROLE_ORDER.map((role) => `<button class="filter-button mode-button ${state.role === role ? "active" : ""}" data-role="${role}">${ROLE_LABELS[role]}</button>`).join("");
   const statusButton = (status, label) => `<button class="filter-button ${state.status === status ? "active" : ""}" data-status="${status}">${label}</button>`;
+  const viewButton = (view, label) => `<button class="filter-button ${state.view === view ? "active" : ""}" data-view="${view}">${label}</button>`;
   return `<section class="controls">
     <label class="search-wrap"><span>⌕</span><input id="model-search" type="search" placeholder="Search any model" value="${esc(state.query)}" aria-label="Search models"></label>
     <div class="filter-group" role="group" aria-label="Recommendation role">${roleButtons}</div>
+    <div class="filter-group" role="group" aria-label="Catalog view">${viewButton("curated", "Priced")}${viewButton("all", `All ${state.models.length}`)}</div>
     <div class="filter-group" role="group" aria-label="Evidence type">${statusButton("all", "All")}${statusButton("measured", "Measured")}${statusButton("model-index", "Model index")}${statusButton("estimated", "Predicted")}${statusButton("livebench", "LiveBench")}</div>
     <select class="sort-select" id="sort-select" aria-label="Sort models">
       <option value="role" ${state.sort === "role" ? "selected" : ""}>Sort: role score</option>
       <option value="coding" ${state.sort === "coding" ? "selected" : ""}>Sort: coding signal</option>
       <option value="general" ${state.sort === "general" ? "selected" : ""}>Sort: quality</option>
       <option value="visual" ${state.sort === "visual" ? "selected" : ""}>Sort: visual score</option>
-      <option value="price" ${state.sort === "price" ? "selected" : ""}>Sort: task cost</option>
-      <option value="priceM" ${state.sort === "priceM" ? "selected" : ""}>Sort: token price</option>
+      <option value="value" ${state.sort === "value" ? "selected" : ""}>Sort: value</option>
+      <option value="in" ${state.sort === "in" ? "selected" : ""}>Sort: input price</option>
+      <option value="out" ${state.sort === "out" ? "selected" : ""}>Sort: output price</option>
       <option value="name" ${state.sort === "name" ? "selected" : ""}>Sort: name A-Z</option>
     </select>
   </section>`;
@@ -277,18 +337,19 @@ function render() {
   const rows = filteredModels();
   const recommendation = roleData();
   const budget = recommendation.budget_usd !== null && recommendation.budget_usd !== undefined ? ` Default budget: ${money(recommendation.budget_usd)}/turn.` : " Price is not part of this role's objective.";
-  const listHead = `<div class="list-head"><span class="rank">#</span>${headCell("name", "Model")}${headCell("role", "Role score")}${headCell("general", "Quality")}${headCell("price", "Task cost")}${headCell("priceM", "Token price")}<span class="expand-head"></span></div>`;
+  const listHead = `<div class="list-head"><span class="rank">#</span>${headCell("name", "Model")}${headCell("role", "Role score")}${headCell("general", "Quality")}${headCell("value", "Value")}${headCell("in", "In $/1M")}${headCell("out", "Out $/1M")}<span class="expand-head"></span></div>`;
   const description = recommendation.description || "Recommendations are based on benchmark evidence, capability, freshness, and workload cost.";
   $("#app").innerHTML = `<section class="page">
     <div class="page-head">
       <h1>Pick a model<br>for the actual job.</h1>
       <p>${esc(description)}${esc(budget)} Recommendations distinguish measured agent runs, model-index signals, benchmark support, and regression predictions.</p>
     </div>
+    ${statCards()}
     ${picksBar()}
     ${controls()}
     ${listHead}
     <div class="list">${rows.length ? rows.map((model, index) => rowHtml(model, index + 1)).join("") : `<div class="empty-state">No models match. Try another role or evidence filter.</div>`}</div>
-    <p class="radar-note">${rows.length} model${rows.length === 1 ? "" : "s"} shown. Recommendations are calculated server-side from benchmark lanes and the configured OpenCode workload.</p>
+    <p class="radar-note">${rows.length} of ${state.models.length} models shown${state.view === "curated" ? " (priced only — switch to All to see the full catalog)" : ""}. Value = role score per $1M of output tokens. Recommendations are calculated server-side from benchmark lanes and the configured OpenCode workload.</p>
   </section>`;
   wireEvents();
 }
@@ -302,6 +363,7 @@ function wireEvents() {
   });
   document.querySelectorAll("[data-role]").forEach((button) => button.addEventListener("click", () => { state.role = button.dataset.role; state.sort = "role"; state.sortDir = 1; render(); }));
   document.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => { state.status = button.dataset.status; render(); }));
+  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { state.view = button.dataset.view; render(); }));
   const sort = $("#sort-select");
   if (sort) sort.addEventListener("change", (event) => { state.sort = event.target.value; state.sortDir = 1; render(); });
   document.querySelectorAll("[data-sort-key]").forEach((head) => head.addEventListener("click", () => {
