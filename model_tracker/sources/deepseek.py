@@ -65,9 +65,12 @@ def fetch(f):
     data = None
     last_err = None
     snippet = ""
-    for ttl, force in ((43200, False), (0, True)):
+    attempts = [(43200, False, PAGE), (0, True, PAGE)]
+    for n in range(1, 4):
+        attempts.append((0, True, f"{PAGE}?v={n}"))
+    for ttl, force, url in attempts:
         try:
-            r = f.get(PAGE, ttl=ttl, force=force)
+            r = f.get(url, ttl=ttl, force=force)
             snippet = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text))[:160]
             data = _parse_table(r.text)
             break
