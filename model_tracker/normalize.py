@@ -47,7 +47,7 @@ FAMILY_PATTERNS = [
     ("deepseek", re.compile(r"\bdeepseek[\s-]*v?(\d{1,2}(?:[.-]\d+)?)(?!\d)[\s-]*(r1|chat|flash|pro|coder|reasoner|v3)?[\s-]*(\d{4,8})?")),
     ("kimi", re.compile(r"\bkimi[\s-]*k?(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
     ("glm", re.compile(r"\bglm[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
-    ("qwen", re.compile(r"\bqwen[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)[\s-]*(max|plus|turbo|omni|coder|flash|vl|thinking)?")),
+    ("qwen", re.compile(r"\bqwen[\s-]*(\d{1,2}(?:\.\d+)?)(?!\d)[\s-]*(max|plus|turbo|omni|coder|flash|vl|thinking|next)?[\s-]*((?:\d+(?:\.\d+)?\s*[bmt]|a\d{1,3}b)(?:[\s-]*(?:\d+(?:\.\d+)?\s*[bmt]|a\d{1,3}b))*)?" )),
     ("muse", re.compile(r"\bmuse[\s-]+([a-z]+)[\s-]*(\d{1,2}(?:[.-]\d+)?)?")),
     ("solar", re.compile(r"\bsolar[\s-]*(?:pro[\s-]*)?(\d{1,2}(?:[.-]\d+)?)?")),
     ("nemotron", re.compile(r"\bnemotron[\s-]*([a-z0-9]+(?:[.-][a-z0-9]+)*)")),
@@ -87,6 +87,8 @@ def canon(name):
     s = ORG_STRIP_RE.sub(" ", s).strip()
     if not s:
         return None
+    if "distill" in s or re.search(r"\br1\b", s):
+        return re.sub(r"[^a-z0-9]+", "-", s).strip("-")[:40] or None
     for key, pat in FAMILY_PATTERNS:
         m = pat.search(s)
         if not m:
@@ -99,6 +101,14 @@ def canon(name):
             out = "muse" + m.group(1)
             if m.group(2):
                 out += _norm_version(m.group(2))
+            return out
+        if key == "qwen":
+            out = "qwen" + _norm_version(m.group(1))
+            if m.group(2):
+                out += "-" + m.group(2)
+            size = m.group(3)
+            if size:
+                out += "-" + re.sub(r"[\s-]+", "-", size)
             return out
         groups = [g for g in m.groups() if g]
         if not groups:
@@ -152,6 +162,9 @@ def plain_key(slug):
             slug = slug[: -len(suf)]
     parts = slug.split("-") if slug else []
     if parts and parts[-1] in {"max", "xhigh", "high", "medium", "low", "none"}:
+        if slug.startswith("qwen"):
+            # "max"/"plus"/"turbo" are part of the Qwen product name, not an effort level.
+            return slug
         return "-".join(parts[:-1])
     return slug
 
