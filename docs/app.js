@@ -45,6 +45,25 @@ function money(value) {
   return `$${Number(value).toFixed(Number(value) < 1 ? 3 : 2)}`;
 }
 
+function tokenPriceLabel(model) {
+  const official = model.detail?.ds_official;
+  if (!official) return money(model.price_mtok);
+  const values = [
+    official.cache_miss_off_peak,
+    official.output_off_peak,
+    official.cache_miss_peak,
+    official.output_peak,
+  ];
+  if (values.some((value) => value === null || value === undefined)) return money(model.price_mtok);
+  const offPeak = (official.cache_miss_off_peak * 3 + official.output_off_peak) / 4;
+  const peak = (official.cache_miss_peak * 3 + official.output_peak) / 4;
+  return `${money(offPeak)}-${money(peak)}`;
+}
+
+function tokenPriceNote(model) {
+  return model.detail?.ds_official ? "official off-peak to peak" : "per 1M tokens";
+}
+
 function minutes(seconds) {
   if (seconds === null || seconds === undefined || Number.isNaN(Number(seconds))) return "—";
   const mins = Math.round(Number(seconds) / 60);
@@ -134,12 +153,17 @@ function picksBar() {
   const budget = pickFor("budget");
   const workhorse = pickFor("workhorse");
   const overall = [...allModels()].sort((a, b) => quality(b) - quality(a))[0];
-  const card = (label, model, tier, note) => `<button class="pick-card ${state.tier === tier ? "active" : ""}" data-tier="${tier}">
+  const card = (label, model, tier, note) => {
+    const spendLabel = model
+      ? spend(model) === model.cost_task ? `${money(spend(model))}/task` : `${tokenPriceLabel(model)}/1M tok`
+      : "";
+    return `<button class="pick-card ${state.tier === tier ? "active" : ""}" data-tier="${tier}">
     <span class="pick-label">${label}</span>
     <strong>${esc(model ? model.name : "—")}</strong>
-    <span class="pick-meta">${model ? `${num(quality(model))} score · ${money(spend(model))}${spend(model) === model?.cost_task ? "/task" : model?.price_mtok ? "/1M tok" : ""}` : ""}</span>
+    <span class="pick-meta">${model ? `${num(quality(model))} score${spendLabel ? ` · ${spendLabel}` : ""}` : ""}</span>
     <small>${note}</small>
   </button>`;
+  };
   return `<section class="picks">${card("Cheap and good", budget, "budget", "under $0.50 a task")}${card("The workhorse", workhorse, "workhorse", "$0.50 to $3 a task")}${card("The best there is", overall, "frontier", "top score, any price")}</section>`;
 }
 
@@ -208,8 +232,10 @@ function detailHtml(model) {
           <div class="spec-row"><span>Speed score</span><b>${model.speed !== null && model.speed !== undefined ? num(model.speed, 0) : "—"}</b></div>
           <div class="spec-row"><span>Time per task</span><b>${minutes(model.wall_time_s)}</b></div>
           <div class="spec-row"><span>Cost per task</span><b>${money(model.cost_task)}</b>${adjusted}</div>
-          <div class="spec-row"><span>Price per 1M tokens</span><b>${money(model.price_mtok)}</b></div>
-          <div class="spec-row"><span>Input / output</span><b>${money(detail.price_input)} / ${money(detail.price_output)}</b></div>
+          <div class="spec-row"><span>Price per 1M tokens</span><b>${tokenPriceLabel(model)}</b></div>
+          <div class="spec-row"><span>${detail.ds_official ? "Official input / output (off-peak)" : "Input / output"}</span><b>${money(detail.price_input)} / ${money(detail.price_output)}</b></div>
+          ${detail.openrouter_price_mtok !== undefined ? `
+          <div class="spec-row"><span>OpenRouter listing</span><b>${money(detail.openrouter_price_input)} / ${money(detail.openrouter_price_output)}</b></div>` : ""}
           ${detail.ds_official ? `
           <div class="spec-row"><span>DeepSeek official · off-peak</span><b>${money(detail.ds_official.cache_miss_off_peak)} / ${money(detail.ds_official.output_off_peak)}</b></div>
           <div class="spec-row"><span>DeepSeek official · peak</span><b>${money(detail.ds_official.cache_miss_peak)} / ${money(detail.ds_official.output_peak)}</b></div>` : ""}
@@ -243,7 +269,7 @@ function rowHtml(model, rank) {
       <div class="cell score-cell"><b>${num(mainValue)}</b><small>${mainNote}</small></div>
       <div class="cell"><b>${num(secondaryValue)}</b><small>${secondaryNote}</small></div>
       <div class="cell cell-task"><b>${money(model.cost_task)}</b><small>per task</small></div>
-      <div class="cell cell-price"><b>${money(model.price_mtok)}</b><small>per 1M tokens</small></div>
+      <div class="cell cell-price"><b>${tokenPriceLabel(model)}</b><small>${tokenPriceNote(model)}</small></div>
       <div class="expand">${expanded ? "−" : "+"}</div>
     </article>
     ${expanded ? detailHtml(model) : ""}
