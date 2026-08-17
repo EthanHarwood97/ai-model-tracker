@@ -167,15 +167,26 @@ class Engine:
                     continue
                 official = {k: v for k, v in extra.items() if k not in ("or_id", "version", "peak_hours_utc")}
                 if official:
-                    ent.setdefault("detail", {})["ds_official"] = official
-                if ent.get("price_mtok") is None:
+                    detail = ent.setdefault("detail", {})
+                    detail["ds_official"] = official
                     off_in = official.get("cache_miss_off_peak")
                     off_out = official.get("output_off_peak")
-                    if isinstance(off_in, (int, float)) and isinstance(off_out, (int, float)):
-                        ent["price_mtok"] = round((off_in * 3 + off_out) / 4, 4)
-                        ent["price_source"] = "deepseek"
-                        ent["detail"]["price_input"] = off_in
-                        ent["detail"]["price_output"] = off_out
+                    peak_in = official.get("cache_miss_peak")
+                    peak_out = official.get("output_peak")
+                    if (
+                        isinstance(off_in, (int, float))
+                        and isinstance(off_out, (int, float))
+                        and isinstance(peak_in, (int, float))
+                        and isinstance(peak_out, (int, float))
+                    ):
+                        if ent.get("price_source") == "openrouter":
+                            detail["openrouter_price_mtok"] = ent.get("price_mtok")
+                            detail["openrouter_price_input"] = detail.get("price_input")
+                            detail["openrouter_price_output"] = detail.get("price_output")
+                        ent["price_mtok"] = round((float(off_in) * 3 + float(off_out)) / 4, 4)
+                        ent["price_source"] = "deepseek_official"
+                        detail["price_input"] = off_in
+                        detail["price_output"] = off_out
                 break
         ttft_all = [ent.get("time_to_first_answer") for ent in entities]
         speed_all = [ent.get("output_speed") for ent in entities]
