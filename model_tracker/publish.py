@@ -8,12 +8,16 @@ STATIC_DIR = pathlib.Path(__file__).resolve().parent.parent / "static"
 
 
 def _serialize_row(r):
+    try:
+        extra = json.loads(r["extra"]) if r["extra"] else {}
+    except Exception:
+        extra = {}
     return {
         "kind": r["kind"],
         "slug": r["slug"],
         "name": r["name"],
         "score": r["score"],
-        "extra": r["extra"] or {},
+        "extra": extra,
     }
 
 

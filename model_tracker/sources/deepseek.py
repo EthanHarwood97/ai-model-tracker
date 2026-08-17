@@ -11,38 +11,68 @@ MODEL_VERSIONS = {
 _OFFPEAK = "off_peak"
 _PEAK = "peak"
 
+_LABELS = {
+    "cache_hit": r"1M\s+INPUT\s+TOKENS\s*\(\s*CACHE\s+HIT\s*\)",
+    "cache_miss": r"1M\s+INPUT\s+TOKENS\s*\(\s*CACHE\s+MISS\s*\)",
+    "output": r"1M\s+OUTPUT\s+TOKENS",
+}
+
+_PRICES = r"\$?\d+(?:\.\d+)?"
+
 
 def _usd(cell):
-    m = re.search(r"\$?(\d+(?:\.\d+)?)", cell)
+    m = re.search(r"(\d+(?:\.\d+)?)", cell)
     return round(float(m.group(1)), 4) if m else None
 
 
+def _tiered(text, label):
+    patterns = [
+        rf"{label}\s+OFF[\s-]+PEAK\s+({_PRICES})\s+({_PRICES})\s+PEAK\s+({_PRICES})\s+({_PRICES})",
+        rf"{label}\s+OFF[\s-]+PEAK\s+({_PRICES})\s+({_PRICES})\s+({_PRICES})\s+({_PRICES})",
+        rf"{label}\s+({_PRICES})\s+({_PRICES})\s+PEAK\s+({_PRICES})\s+({_PRICES})",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.I)
+        if m:
+            return {
+                _OFFPEAK: (_usd(m.group(1)), _usd(m.group(2))),
+                _PEAK: (_usd(m.group(3)), _usd(m.group(4))),
+            }
+    m = re.search(rf"{label}\s+((?:{_PRICES}\s*)+)", text, re.I)
+    if m:
+        vals = re.findall(_PRICES, m.group(1))
+        if len(vals) >= 4:
+            return {
+                _OFFPEAK: (_usd(vals[0]), _usd(vals[1])),
+                _PEAK: (_usd(vals[2]), _usd(vals[3])),
+            }
+    return None
+
+
 def _parse_table(html):
-    text = unescape(re.sub(r"<[^>]+>", " ", html))
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))).strip()
     data = {}
-    labels = {
-        "cache_hit": r"1M\s+INPUT\s+TOKENS\s+\(\s*CACHE\s+HIT\s*\)",
-        "cache_miss": r"1M\s+INPUT\s+TOKENS\s+\(\s*CACHE\s+MISS\s*\)",
-        "output": r"1M\s+OUTPUT\s+TOKENS",
-    }
-    tiered_prices = r"OFF[\s-]+PEAK\s+\$([\d.]+)\s+\$([\d.]+)\s+PEAK\s+\$([\d.]+)\s+\$([\d.]+)"
-    for metric, label in labels.items():
-        match = re.search(rf"{label}\s+{tiered_prices}", text, re.I)
-        if not match:
-            continue
-        data[metric] = {
-            _OFFPEAK: (_usd(match.group(1)), _usd(match.group(2))),
-            _PEAK: (_usd(match.group(3)), _usd(match.group(4))),
-        }
-    if set(data) != set(labels):
+    for metric, label in _LABELS.items():
+        tiers = _tiered(text, label)
+        if tiers:
+            data[metric] = tiers
+    if set(data) != set(_LABELS):
         raise ValueError("pricing table not found")
     return data
 
 
 def fetch(f):
-    r = f.get(PAGE, ttl=43200)
-    data = _parse_table(r.text)
+    data = None
+    last_err = None
+    for ttl, force in ((43200, False), (0, True)):
+        try:
+            r = f.get(PAGE, ttl=ttl, force=force)
+            data = _parse_table(r.text)
+            break
+        except Exception as e:
+            last_err = e
+    if not data:
+        raise ValueError(f"pricing table not found ({last_err})")
     rows = []
     for or_id, (flavor, version) in MODEL_VERSIONS.items():
         idx = 0 if flavor == "flash" else 1

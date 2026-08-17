@@ -163,6 +163,8 @@ class Engine:
         for ent in entities:
             for m in ds_rows:
                 extra = m.get("extra") or {}
+                if not isinstance(extra, dict):
+                    extra = {}
                 if canon(m["name"]) != ent["plain"]:
                     continue
                 official = {k: v for k, v in extra.items() if k not in ("or_id", "version", "peak_hours_utc")}

@@ -108,12 +108,22 @@ class Store:
             self.conn.execute("UPDATE snapshots SET row_count=? WHERE id=?", (row_count, snapshot_id))
             self.conn.commit()
 
+    @staticmethod
+    def _norm_extra(value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except Exception:
+                return {}
+        return value or {}
+
     def insert_rows(self, snapshot_id, source, rows):
         with self.lock:
             payload = [
                 (
                     snapshot_id, source, r.get("kind", "generic"), r.get("slug"),
-                    r.get("name", "?"), r.get("score"), json.dumps(r.get("extra", {}), ensure_ascii=False),
+                    r.get("name", "?"), r.get("score"),
+                    json.dumps(self._norm_extra(r.get("extra")), ensure_ascii=False),
                 )
                 for r in rows
             ]
