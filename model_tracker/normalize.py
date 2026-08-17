@@ -22,7 +22,7 @@ ORG_WORDS = {
     "tencent", "inflection", "perplexity", "liquid", "orion", "orionai",
     "writer", "youcom", "wolfram", "huggingface", "hf", "deci",
     "eleutherai", "microsoft", "ai21labs", "bigcode", "mistralai",
-    "google", "meta-llama", "deepseek-ai",
+    "google", "meta-llama", "deepseek-ai", "xiaomi",
 }
 
 EFFORT_WORDS = {

@@ -1,5 +1,6 @@
 import json as _json
 import logging
+import re
 
 from . import alerts
 from .composite import build_components, build_market, compute_entities
@@ -98,22 +99,46 @@ class Engine:
         market_rows = data.get("openrouter", [])
         for ent in entities:
             aa_price = ent["price_mtok"]
+            matches = []
+            ent_plain = ent["plain"]
             for m in market_rows:
-                if m.get("extra", {}).get("or_id") and canon(m["extra"]["or_id"]) == ent["plain"]:
-                    p = m["extra"].get("price_blended")
-                    if p is not None:
-                        ent["aa_price_mtok"] = aa_price
-                        ent["price_mtok"] = p
-                        ent["price_source"] = "openrouter"
-                        ent.setdefault("detail", {})
-                        ent["detail"]["price_input"] = m["extra"].get("price_prompt")
-                        ent["detail"]["price_output"] = m["extra"].get("price_completion")
-                        if aa_price and aa_price > 0 and ent.get("cost_task"):
-                            ratio = p / aa_price
-                            if 0.2 <= ratio <= 5 and abs(ratio - 1) > 0.02:
-                                ent["cost_task"] = round(ent["cost_task"] * ratio, 4)
-                                ent["detail"]["cost_adjusted"] = round(ratio, 3)
-                    break
+                or_id = m.get("extra", {}).get("or_id")
+                if not or_id:
+                    continue
+                c = canon(or_id)
+                if c == ent_plain or c.startswith(ent_plain + ".") or c.startswith(ent_plain + "-"):
+                    matches.append((m, c == ent_plain))
+            if not matches:
+                continue
+
+            ent_name_lc = re.sub(r"[^a-z0-9]+", " ", (ent.get("name") or "").lower()).strip()
+            ent_tokens = {t for t in ent_name_lc.split() if len(t) > 1}
+
+            def token_score(mm):
+                or_name = (mm.get("extra") or {}).get("or_name") or mm["extra"].get("or_id") or ""
+                on_tokens = {t for t in re.sub(r"[^a-z0-9]+", " ", or_name.lower()).strip().split() if len(t) > 1}
+                return len(ent_tokens & on_tokens)
+
+            scored = [(mm, exact, token_score(mm)) for mm, exact in matches]
+            top_token = max(s for _, _, s in scored)
+            top = [mm for mm, _, s in scored if s == top_token]
+            top.sort(key=lambda mm: (canon(mm["extra"].get("or_id") or "") != ent_plain,
+                                     len(mm["extra"].get("or_id") or ""),
+                                     mm["extra"].get("or_id") or ""))
+            m = top[0]
+            p = m["extra"].get("price_blended")
+            if p is not None:
+                ent["aa_price_mtok"] = aa_price
+                ent["price_mtok"] = p
+                ent["price_source"] = "openrouter"
+                ent.setdefault("detail", {})
+                ent["detail"]["price_input"] = m["extra"].get("price_prompt")
+                ent["detail"]["price_output"] = m["extra"].get("price_completion")
+                if aa_price and aa_price > 0 and ent.get("cost_task"):
+                    ratio = p / aa_price
+                    if 0.2 <= ratio <= 5 and abs(ratio - 1) > 0.02:
+                        ent["cost_task"] = round(ent["cost_task"] * ratio, 4)
+                        ent["detail"]["cost_adjusted"] = round(ratio, 3)
         existing_plains = {ent["plain"] for ent in entities}
         lb_by_name = {}
         for r in data.get("livebench", []):
@@ -160,36 +185,44 @@ class Engine:
                     break
             entities.append(ent)
         ds_rows = data.get("deepseek", [])
+        ds_by_plain = {}
+        for m in ds_rows:
+            extra = m.get("extra") or {}
+            if not isinstance(extra, dict):
+                extra = {}
+            official = {k: v for k, v in extra.items() if k not in ("or_id", "version", "peak_hours_utc")}
+            if official:
+                ds_by_plain[canon(m["name"])] = official
+        for alias, target in (
+            ("deepseek4-flash", "deepseek4-flash-0731"),
+            ("deepseek4-pro", "deepseek4-pro-0813"),
+        ):
+            if alias not in ds_by_plain and target in ds_by_plain:
+                ds_by_plain[alias] = ds_by_plain[target]
         for ent in entities:
-            for m in ds_rows:
-                extra = m.get("extra") or {}
-                if not isinstance(extra, dict):
-                    extra = {}
-                if canon(m["name"]) != ent["plain"]:
-                    continue
-                official = {k: v for k, v in extra.items() if k not in ("or_id", "version", "peak_hours_utc")}
-                if official:
-                    detail = ent.setdefault("detail", {})
-                    detail["ds_official"] = official
-                    off_in = official.get("cache_miss_off_peak")
-                    off_out = official.get("output_off_peak")
-                    peak_in = official.get("cache_miss_peak")
-                    peak_out = official.get("output_peak")
-                    if (
-                        isinstance(off_in, (int, float))
-                        and isinstance(off_out, (int, float))
-                        and isinstance(peak_in, (int, float))
-                        and isinstance(peak_out, (int, float))
-                    ):
-                        if ent.get("price_source") == "openrouter":
-                            detail["openrouter_price_mtok"] = ent.get("price_mtok")
-                            detail["openrouter_price_input"] = detail.get("price_input")
-                            detail["openrouter_price_output"] = detail.get("price_output")
-                        ent["price_mtok"] = round((float(off_in) * 3 + float(off_out)) / 4, 4)
-                        ent["price_source"] = "deepseek_official"
-                        detail["price_input"] = off_in
-                        detail["price_output"] = off_out
-                break
+            official = ds_by_plain.get(ent["plain"])
+            if not official:
+                continue
+            detail = ent.setdefault("detail", {})
+            detail["ds_official"] = official
+            off_in = official.get("cache_miss_off_peak")
+            off_out = official.get("output_off_peak")
+            peak_in = official.get("cache_miss_peak")
+            peak_out = official.get("output_peak")
+            if (
+                isinstance(off_in, (int, float))
+                and isinstance(off_out, (int, float))
+                and isinstance(peak_in, (int, float))
+                and isinstance(peak_out, (int, float))
+            ):
+                if ent.get("price_source") == "openrouter":
+                    detail["openrouter_price_mtok"] = ent.get("price_mtok")
+                    detail["openrouter_price_input"] = detail.get("price_input")
+                    detail["openrouter_price_output"] = detail.get("price_output")
+                ent["price_mtok"] = round((float(off_in) * 3 + float(off_out)) / 4, 4)
+                ent["price_source"] = "deepseek_official"
+                detail["price_input"] = off_in
+                detail["price_output"] = off_out
         ttft_all = [ent.get("time_to_first_answer") for ent in entities]
         speed_all = [ent.get("output_speed") for ent in entities]
 

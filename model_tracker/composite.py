@@ -95,7 +95,7 @@ def compute_entities(coding_rows, model_rows, est_rows, pairs_attach, comps, cfg
     for c in coding_rows:
         attach = pairs_attach.get(c["slug"], {})
         extra = c.get("extra") or {}
-        plain = canon(extra.get("model")) or plain_key(c["slug"])
+        plain = plain_key(canon(extra.get("model"))) or plain_key(c["slug"])
         ent = {
             "slug": c["slug"],
             "plain": plain,
@@ -124,7 +124,7 @@ def compute_entities(coding_rows, model_rows, est_rows, pairs_attach, comps, cfg
         m = e["model_row"]
         ent = {
             "slug": e["slug"],
-            "plain": canon(m["name"]) or e["slug"],
+            "plain": plain_key(canon(m["name"])) or e["slug"],
             "name": m["name"],
             "harness": None,
             "effort": None,
