@@ -124,6 +124,31 @@ def _weighted_mean(signals, weights):
     return round(sum(value * weight for value, weight in present) / weight_sum, 2), round(weight_sum, 3)
 
 
+def _resolve_coding_signal(signals, profile):
+    """Pick the coding evidence for a coding-heavy role and discount it honestly.
+
+    A model without a Coding Agent measurement must not silently rank beside
+    measured models. The model-index signal is usable at 90% strength; a
+    regression prediction is only usable at 80% and only when it clears a
+    floor, otherwise supporting benchmarks can carry a weak model to the top.
+    """
+    quality = profile.get("quality") or {}
+    if "coding" not in quality:
+        return None, "not_applicable", 1.0
+    measured = signals.get("coding")
+    if measured is not None:
+        return measured, "measured", 1.0
+    model_index = signals.get("aa_model_coding")
+    if model_index is not None:
+        return model_index, "model_index", 0.9
+    predicted = signals.get("predicted_coding")
+    if predicted is not None:
+        if predicted < 45:
+            return None, "excluded_low_prediction", None
+        return predicted, "predicted", 0.8
+    return None, "missing", 1.0
+
+
 def _confidence(entity, signals, quality_coverage):
     measurement_type = entity.get("measurement_type")
     base = {
@@ -161,6 +186,13 @@ def _capability_status(entity):
 
 def _candidate(entity, role, profile, workload):
     signals = _quality_signals(entity)
+    coding_value, coding_source, coding_multiplier = _resolve_coding_signal(signals, profile)
+    if coding_multiplier is None:
+        return None
+    if coding_source != "measured" and coding_source != "not_applicable" and profile["quality"].get("coding") and coding_value is not None:
+        signals = dict(signals)
+        signals["coding"] = round(coding_value * coding_multiplier, 2)
+        signals["coding_unmeasured"] = coding_source
     quality, quality_coverage = _weighted_mean(signals, profile["quality"])
     if quality is None:
         return None
@@ -206,6 +238,10 @@ def _candidate(entity, role, profile, workload):
         warnings.append("coding score is a regression estimate")
     if entity.get("measurement_type") == "aa_model_index":
         warnings.append("coding signal is from the model index, not an agent run")
+    if signals.get("coding_unmeasured") == "model_index":
+        warnings.append("coding signal is from the model index, not an agent run")
+    elif signals.get("coding_unmeasured") == "predicted":
+        warnings.append("coding score is a regression estimate")
     if entity.get("deprecated"):
         warnings.append("provider marks this model deprecated")
 
