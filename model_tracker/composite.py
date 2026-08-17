@@ -128,7 +128,7 @@ def compute_entities(coding_rows, model_rows, est_rows, pairs_attach, comps, cfg
             "name": m["name"],
             "harness": None,
             "effort": None,
-            "measured": False,
+            "measured": not e["estimated"],
             "coding_index": e["score"],
             "cost_task": None,
             "wall_time_s": None,

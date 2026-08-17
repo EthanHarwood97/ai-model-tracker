@@ -113,41 +113,59 @@ def _quirky(name):
 
 def estimate_for_model(m, cfg, train_max_iq=None):
     est_cfg = cfg["est"]
-    iq = m["score"]
+    iq_val = m.get("score")
+    iq = float(iq_val) if iq_val is not None else None
     coding = m["extra"].get("coding_index")
-    est1 = est_cfg["int_slope"] * iq + est_cfg["int_intercept"]
+    coding_num = float(coding) / 100.0 if coding is not None else None
+    legacy_scale = iq is not None and iq < 30
+    has_real_coding = coding_num is not None and not legacy_scale
+    est1 = est_cfg["int_slope"] * iq + est_cfg["int_intercept"] if iq is not None else None
     est2 = None
-    if coding is not None:
-        est2 = est_cfg["code_slope"] * coding + est_cfg["code_intercept"]
+    if coding_num is not None:
+        est2 = est_cfg["code_slope"] * coding_num + est_cfg["code_intercept"]
     adj, adj_reason = _fam_adj(m["name"], cfg)
     cap = float(est_cfg.get("cap", 0.75))
-    extrapolated = train_max_iq is not None and iq > train_max_iq
-    est = min(cap, max(0.0, est1 + adj))
+    extrapolated = train_max_iq is not None and iq is not None and iq > train_max_iq
+    adj_f = float(adj)
+    cap_f = float(cap)
+    if has_real_coding and coding_num is not None:
+        score = max(0.0, min(cap_f, coding_num + adj_f))
+        source = "aa_coding_index"
+    elif est1 is not None:
+        score = min(cap_f, max(0.0, est1 + adj_f))
+        source = "extrapolated"
+    else:
+        score = 0.0
+        source = "no_data"
     detail = {
-        "est_from_intelligence": round(est1, 4),
+        "est_from_intelligence": round(est1, 4) if est1 is not None else None,
         "est_from_coding_index": round(est2, 4) if est2 is not None else None,
-        "adjustment": adj,
+        "adjustment": adj_f,
         "adjustment_reason": adj_reason,
         "quirky_family": _quirky(m["name"]),
         "intelligence_index": iq,
         "coding_index": coding,
         "extrapolated": extrapolated,
-        "capped": (est1 + adj) > cap,
+        "capped": (score > cap_f),
+        "source": source,
     }
     if est2 is not None:
         detail["agrees"] = abs(est1 - est2) <= est_cfg["agree_threshold"]
     else:
         detail["agrees"] = None
     band = float(est_cfg["band"])
-    if extrapolated:
-        band = max(band, float(est_cfg.get("extrapolated_band", 0.10)))
+    if not has_real_coding:
+        if extrapolated:
+            band = max(band, float(est_cfg.get("extrapolated_band", 0.10)))
+    else:
+        band = max(band * 0.5, 0.02)
     detail["band"] = band
     return {
         "slug": m["slug"] or canon(m["name"]),
         "name": m["name"],
-        "score": round(est * 100, 2),
-        "score_raw": est,
-        "estimated": True,
+        "score": round(score * 100, 2),
+        "score_raw": score,
+        "estimated": not has_real_coding,
         "band": band,
         "model_row": m,
         "detail": detail,
