@@ -1,5 +1,7 @@
 from collections import OrderedDict
 
+from .normalize import plain_key
+
 
 ROLE_PROFILES = OrderedDict(
     (
@@ -11,32 +13,37 @@ ROLE_PROFILES = OrderedDict(
                 "weights": {"quality": 0.45, "cost": 0.30, "speed": 0.25},
                 "quality": {"reasoning": 0.30, "tool_use": 0.30, "agentic": 0.20, "intelligence": 0.20},
                 "requires_tools": True,
+                "min_quality": 45,
             },
         ),
         (
             "general_coder",
             {
                 "label": "General coder",
-                "description": "The best coding capability per OpenCode turn, not merely the highest raw benchmark.",
+                "description": "Best bang for buck among models proven in real coding-agent runs.",
                 "weights": {"quality": 0.65, "cost": 0.25, "speed": 0.10},
                 "quality": {"coding": 0.65, "coding_support": 0.25, "agentic": 0.10},
+                "requires_agent_measurement": True,
+                "min_coding": 55,
             },
         ),
         (
             "ui_coder",
             {
                 "label": "UI coder",
-                "description": "Models with visual/frontend evidence as well as reliable coding ability.",
+                "description": "Models with frontend/design evidence as well as reliable coding ability.",
                 "weights": {"quality": 0.70, "cost": 0.15, "speed": 0.15},
                 "quality": {"visual": 0.45, "coding": 0.40, "coding_support": 0.15},
                 "requires_visual": True,
+                "requires_frontend": True,
+                "min_visual": 70,
             },
         ),
         (
             "complex_code",
             {
-                "label": "Complex code",
-                "description": "Highest measured coding and agentic quality, with price ignored.",
+                "label": "Complex code (solver)",
+                "description": "The solver for when the general coder is not enough: highest measured coding and agentic capability, price ignored.",
                 "weights": {"quality": 1.0, "cost": 0.0, "speed": 0.0},
                 "quality": {"coding": 0.70, "agentic": 0.20, "coding_support": 0.10},
                 "measured_only": True,
@@ -70,6 +77,20 @@ def _quality_signals(entity):
         if measurement_type == "predicted_coding_agent"
         else None
     )
+    frontend = max(
+        [value for value in (
+            _number(entity.get("vision_frontend")),
+            _component_value(entity, "visual_frontend"),
+        ) if value is not None],
+        default=None,
+    )
+    visual_proxy = max(
+        [value for value in (
+            _number(entity.get("vision")),
+            _component_value(entity, "vision"),
+        ) if value is not None],
+        default=None,
+    )
     return {
         "coding": actual_coding,
         "coding_support": support_coding,
@@ -79,22 +100,8 @@ def _quality_signals(entity):
         "tool_use": _component_value(entity, "tool_use"),
         "reasoning": _component_value(entity, "reasoning"),
         "intelligence": _number(entity.get("intelligence")),
-        "visual": max(
-            [value for value in (
-                _number(entity.get("vision_frontend")),
-                _number(entity.get("vision")),
-                _component_value(entity, "visual_frontend"),
-                _component_value(entity, "vision"),
-            ) if value is not None],
-            default=None,
-        ),
-        "visual_frontend": max(
-            [value for value in (
-                _number(entity.get("vision_frontend")),
-                _component_value(entity, "visual_frontend"),
-            ) if value is not None],
-            default=None,
-        ),
+        "visual": frontend if frontend is not None else visual_proxy,
+        "visual_frontend": frontend,
         "speed": _number(entity.get("speed")),
     }
 
@@ -196,14 +203,24 @@ def _candidate(entity, role, profile, workload):
     quality, quality_coverage = _weighted_mean(signals, profile["quality"])
     if quality is None:
         return None
+    if profile.get("min_quality") is not None and quality < profile["min_quality"]:
+        return None
     if profile.get("requires_tools"):
         capability = _capability_status(entity)
         if capability == "unsupported":
             return None
     if profile.get("requires_visual") and signals["visual"] is None:
         return None
+    if profile.get("requires_frontend") and signals["visual_frontend"] is None:
+        return None
+    if profile.get("min_visual") is not None and (signals["visual"] is None or signals["visual"] < profile["min_visual"]):
+        return None
     if profile.get("requires_agent_measurement") and entity.get("measurement_type") != "aa_coding_agent":
         return None
+    if profile.get("min_coding") is not None:
+        measured_coding = signals.get("coding")
+        if measured_coding is None or measured_coding < profile["min_coding"]:
+            return None
     if profile.get("measured_only"):
         if entity.get("measurement_type") not in {"aa_coding_agent", "livebench"} and signals["coding_support"] is None:
             return None
@@ -213,7 +230,9 @@ def _candidate(entity, role, profile, workload):
     if budget is None or projected_cost is None:
         cost_factor = 1.0
     else:
-        cost_factor = min(1.0, float(budget) / max(projected_cost, 0.0001))
+        # Cheaper is better on a sliding scale: full credit at free, zero at the
+        # budget line. Models above budget only matter when nothing fits.
+        cost_factor = max(0.0, 1.0 - projected_cost / float(budget))
     speed = signals.get("speed") or 50.0
     weights = profile["weights"]
     role_score = (
@@ -234,14 +253,15 @@ def _candidate(entity, role, profile, workload):
         warnings.append("no provider price is available for the OpenCode workload")
     if budget is not None and projected_cost is not None and projected_cost > budget:
         warnings.append("above the configured workload budget")
-    if entity.get("measurement_type") == "predicted_coding_agent":
-        warnings.append("coding score is a regression estimate")
-    if entity.get("measurement_type") == "aa_model_index":
-        warnings.append("coding signal is from the model index, not an agent run")
-    if signals.get("coding_unmeasured") == "model_index":
-        warnings.append("coding signal is from the model index, not an agent run")
-    elif signals.get("coding_unmeasured") == "predicted":
-        warnings.append("coding score is a regression estimate")
+    if profile.get("quality", {}).get("coding"):
+        if entity.get("measurement_type") == "predicted_coding_agent":
+            warnings.append("coding score is a regression estimate")
+        if entity.get("measurement_type") == "aa_model_index":
+            warnings.append("coding signal is from the model index, not an agent run")
+        if signals.get("coding_unmeasured") == "model_index":
+            warnings.append("coding signal is from the model index, not an agent run")
+        elif signals.get("coding_unmeasured") == "predicted":
+            warnings.append("coding score is a regression estimate")
     if entity.get("deprecated"):
         warnings.append("provider marks this model deprecated")
 
@@ -268,7 +288,7 @@ def _candidate(entity, role, profile, workload):
         "accepts_image": entity.get("accepts_image"),
         "coverage": entity.get("coverage", 0),
         "source_names": entity.get("source_names", []),
-        "warnings": warnings,
+        "warnings": list(dict.fromkeys(warnings)),
     }
 
 
@@ -310,6 +330,15 @@ def build_recommendations(entities, cfg):
             price_unverified = True
             candidates = []
         candidates.sort(key=_sort_key)
+        seen = set()
+        deduped = []
+        for candidate in candidates:
+            identity = plain_key(candidate.get("slug") or "") or candidate.get("slug")
+            if identity in seen:
+                continue
+            seen.add(identity)
+            deduped.append(candidate)
+        candidates = deduped
         recommended = candidates[0] if candidates else None
         if recommended is not None and budget_relaxed:
             recommended["warnings"].append("no candidate met the configured workload budget")
