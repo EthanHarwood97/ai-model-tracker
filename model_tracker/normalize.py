@@ -49,7 +49,7 @@ FAMILY_PATTERNS = [
     ("glm", re.compile(r"\bglm[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
     ("qwen", re.compile(r"\bqwen[\s-]*(\d{1,2}(?:\.\d+)?)(?!\d)[\s-]*(max|plus|turbo|omni|coder|flash|vl|thinking|next)?[\s-]*((?:\d+(?:\.\d+)?\s*[bmt]|a\d{1,3}b)(?:[\s-]*(?:\d+(?:\.\d+)?\s*[bmt]|a\d{1,3}b))*)?" )),
     ("muse", re.compile(r"\bmuse[\s-]+([a-z]+)[\s-]*(\d{1,2}(?:[.-]\d+)?)?")),
-    ("solar", re.compile(r"\bsolar[\s-]*(?:pro[\s-]*)?(\d{1,2}(?:[.-]\d+)?)?")),
+    ("solar", re.compile(r"\bsolar[\s-]*(pro[\s-]*)?(\d{1,2}(?:[.-]\d+)?)?[\s-]*(mini|preview|open\d*)?")),
     ("nemotron", re.compile(r"\bnemotron[\s-]*([a-z0-9]+(?:[.-][a-z0-9]+)*)")),
     ("exaone", re.compile(r"\b(?:k-)?exaone[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
     ("ling", re.compile(r"\bling[\s-]*(\d{1,2}(?:[.-]\d+)?)(?!\d)")),
@@ -109,6 +109,15 @@ def canon(name):
             size = m.group(3)
             if size:
                 out += "-" + re.sub(r"[\s-]+", "-", size)
+            return out
+        if key == "solar":
+            out = "solar"
+            if m.group(1):
+                out += "pro"
+            if m.group(2):
+                out += _norm_version(m.group(2))
+            if m.group(3):
+                out += "-" + m.group(3)
             return out
         groups = [g for g in m.groups() if g]
         if not groups:

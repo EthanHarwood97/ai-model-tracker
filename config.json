@@ -30,7 +30,8 @@
     "int_slope": 0.01417,
     "int_intercept": -0.2089,
     "code_slope": 0.01206,
-    "code_intercept": -0.3022
+    "code_intercept": -0.3022,
+    "index_inflation_tolerance": 0.25
   },
   "sources": {
     "aa_coding":      { "enabled": true,  "required": true, "interval_min": 35,  "category": "coding_agent", "change_threshold": 0.5 },

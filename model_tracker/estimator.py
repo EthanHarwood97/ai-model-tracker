@@ -172,6 +172,21 @@ def estimate_for_model(m, cfg, train_max_iq=None):
     )
 
     if coding_points is not None:
+        # The regression cross-check must not be wildly violated before the
+        # leaderboard index is trusted. A model rated near-zero for general
+        # intelligence cannot also be a top coder: such rows are mislabeled
+        # (e.g. stale entries, wrong-size variants) and must not be published.
+        # Coder-specialists that sit consistently above the intelligence line
+        # stay within the tolerance and keep their index.
+        tolerance = float(est_cfg.get("index_inflation_tolerance", 0.25))
+        if est1 is not None and est2 is not None and est2 - est1 > tolerance:
+            use_index = False
+        else:
+            use_index = True
+    else:
+        use_index = False
+
+    if use_index:
         # AA's model leaderboard coding index is observed evidence, but it is not an
         # AA Coding Agent measurement and must not enter the measured coding view.
         score_points = coding_points

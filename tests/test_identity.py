@@ -39,6 +39,20 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(plain_key("opus5-max"), "opus5")
         self.assertEqual(plain_key("claude-4-5-haiku-high"), "claude-4-5-haiku")
 
+    def test_solar_variants_keep_their_identity(self):
+        self.assertEqual(canon("Solar Mini"), "solar-mini")
+        self.assertEqual(canon("Solar Pro 4"), "solarpro4")
+        self.assertEqual(canon("Solar Pro 2 (Preview)"), "solarpro2-preview")
+        self.assertEqual(canon("Solar Open2 250B"), "solar-open2")
+        self.assertEqual(canon("upstage/solar-pro-preview-instruct"), "solarpro-preview")
+        keys = {
+            plain_key(canon("Solar Mini")),
+            plain_key(canon("Solar Pro 4")),
+            plain_key(canon("Solar Pro 2 (Preview)")),
+            plain_key(canon("Solar Open2 250B")),
+        }
+        self.assertEqual(len(keys), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

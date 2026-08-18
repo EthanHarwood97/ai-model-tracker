@@ -98,10 +98,13 @@ function qualityValue(model) {
   return candidate?.quality_score ?? model.intelligence ?? null;
 }
 
+const MIN_VALUE_SCORE = 60;
+
 function valueScore(model) {
   const out = priceOut(model);
   const score = roleScoreValue(model);
-  if (out === null || out === undefined || Number(out) <= 0 || score === null || score === undefined) return null;
+  if (out === null || out === undefined || Number(out) <= 0) return null;
+  if (score === null || score === undefined || Number(score) < MIN_VALUE_SCORE) return null;
   return Number(score) / Number(out);
 }
 
@@ -172,7 +175,7 @@ function filteredModels() {
 function statCards() {
   const pool = state.models.filter((model) => isPriced(model));
   const topScore = [...pool].sort((a, b) => (roleScoreValue(b) ?? -1) - (roleScoreValue(a) ?? -1))[0];
-  const valuePool = pool.filter((model) => (roleScoreValue(model) ?? -1) >= 60);
+  const valuePool = pool.filter((model) => (roleScoreValue(model) ?? -1) >= MIN_VALUE_SCORE);
   const topValue = [...valuePool].sort((a, b) => (valueScore(b) ?? -1) - (valueScore(a) ?? -1))[0];
   const topScoreValue = roleScoreValue(topScore);
   const topValueScore = valueScore(topValue);

@@ -61,6 +61,24 @@ class ScoringSemanticsTests(unittest.TestCase):
         self.assertEqual(result["score"], 50)
         self.assertIsNone(result["band"])
 
+    def test_index_coding_is_rejected_when_impossibly_inflated(self):
+        result = estimate_for_model(
+            {"slug": "solar-mini", "name": "Solar Mini", "score": 5.97, "extra": {"coding_index": 78.35}},
+            CFG,
+        )
+        self.assertEqual(result["measurement_type"], "predicted_coding_agent")
+        self.assertTrue(result["estimated"])
+        self.assertEqual(result["score"], 0)
+        self.assertFalse(result["detail"]["agrees"])
+
+    def test_coder_specialist_survives_the_inflation_gate(self):
+        result = estimate_for_model(
+            {"slug": "kat", "name": "KAT Coder Pro V2", "score": 33.73, "extra": {"coding_index": 59.46}},
+            CFG,
+        )
+        self.assertEqual(result["measurement_type"], "aa_model_index")
+        self.assertFalse(result["estimated"])
+
     def test_prediction_band_uses_score_points_and_caps_before_flagging(self):
         result = estimate_for_model(
             {"slug": "m", "name": "Model M", "score": 90, "extra": {}},
